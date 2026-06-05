@@ -1,0 +1,15 @@
+# .gitignore ENV FILES 
+.env
+.env.local
+.env.development
+.env.production
+
+# Node
+node_modules
+dist
+build
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
