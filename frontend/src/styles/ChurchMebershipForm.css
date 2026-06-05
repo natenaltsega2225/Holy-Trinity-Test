@@ -1,0 +1,59 @@
+/* Container */
+.membership-container {
+  max-width: 500px;
+  margin: 0 auto;
+  padding: 2rem;
+  font-family: sans-serif;
+  background-color: #f9f9f9;
+  border-radius: 8px;
+}
+
+/* Heading */
+.membership-heading {
+  margin-bottom: 1.5rem;
+  font-size: 1.2rem;
+  text-align: center;
+}
+
+/* Form layout */
+.membership-form {
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+}
+
+/* Inputs and select */
+.membership-input,
+.membership-select {
+  padding: 0.75rem;
+  font-size: 1rem;
+  border-radius: 4px;
+  border: 1px solid #ccc;
+}
+
+/* Radio group */
+.membership-radio-group {
+  display: flex;
+  justify-content: space-around;
+  font-size: 1rem;
+}
+
+/* Submit button */
+.membership-button {
+  padding: 0.75rem;
+  font-size: 1rem;
+  background-color: #183878;
+  color: #fff;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+}
+
+/* Footer note */
+.membership-footer {
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  text-align: center;
+  color: #666;
+}
+

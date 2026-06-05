@@ -1,0 +1,515 @@
+/* =========================================================
+   FILE: public-membership.css
+   FINAL ENTERPRISE RESPONSIVE VERSION
+========================================================= */
+
+* {
+  box-sizing: border-box;
+}
+
+.pay-page {
+  width: 100%;
+  min-height: 100vh;
+
+  background: #f4f7fb;
+
+  padding-top: 120px; /* FIX HEADER OVERLAP */
+  padding-right: 18px;
+  padding-bottom: 60px;
+  padding-left: 18px;
+}
+
+.pay-container {
+  width: 100%;
+  max-width: 1360px;
+
+  margin: 0 auto;
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.payments-title {
+  margin: 0;
+
+  font-size: 28px;
+  font-weight: 600;
+  line-height: 1.2;
+
+  letter-spacing: -0.02em;
+
+  color: #0f172a;
+}
+
+.payments-subtitle {
+  margin-top: 8px;
+  margin-bottom: 24px;
+
+  font-size: 13px;
+  line-height: 1.5;
+  font-weight: 400;
+
+  color: #64748b;
+}
+
+/* =========================================================
+   TOP TABS
+========================================================= */
+
+.pay-tabs {
+  display: inline-flex;
+  align-items: center;
+
+  gap: 8px;
+
+  padding: 8px;
+
+  background: #ffffff;
+
+  border: 1px solid #dbe4f0;
+
+  border-radius: 16px;
+
+  margin-bottom: 28px;
+
+  box-shadow:
+    0 4px 12px rgba(15, 23, 42, 0.04);
+}
+
+.pay-tabs button {
+  border: none;
+
+  min-width: 110px;
+  height: 40px;
+
+  padding: 0 16px;
+
+  border-radius: 12px;
+
+  background: transparent;
+
+  font-size: 13px;
+  font-weight: 500;
+
+  color: #334155;
+
+  cursor: pointer;
+
+  transition: all 0.18s ease;
+}
+
+.pay-tabs button:hover {
+  background: #f8fbff;
+}
+
+.pay-tabs button.active {
+  background:
+    linear-gradient(
+      135deg,
+      #2563eb,
+      #3b82f6
+    );
+
+  color: #ffffff;
+
+  box-shadow:
+    0 8px 18px rgba(37, 99, 235, 0.16);
+}
+
+/* =========================================================
+   MAIN LAYOUT
+========================================================= */
+
+.pay-layout {
+  display: grid;
+
+  grid-template-columns:
+    minmax(0, 1fr)
+    320px;
+
+  gap: 20px;
+
+  align-items: start;
+}
+
+/* =========================================================
+   LEFT CONTENT
+========================================================= */
+
+.pay-left {
+  background: #ffffff;
+
+  border: 1px solid #dbe4f0;
+
+  border-radius: 22px;
+
+  padding: 24px;
+
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.04);
+}
+
+/* =========================================================
+   MEMBERSHIP GRID
+========================================================= */
+
+.pay-grid {
+  display: grid;
+
+  grid-template-columns:
+    repeat(2, minmax(0, 1fr));
+
+  gap: 16px;
+}
+
+/* =========================================================
+   MEMBERSHIP CARD
+========================================================= */
+
+.pay-card {
+  border: 1px solid #dbe4f0;
+
+  border-radius: 20px;
+
+  background: #ffffff;
+
+  min-height: 150px;
+
+  padding: 22px;
+
+  cursor: pointer;
+
+  transition:
+    all 0.18s ease;
+}
+
+.pay-card:hover {
+  transform: translateY(-2px);
+
+  border-color: #60a5fa;
+
+  box-shadow:
+    0 12px 24px rgba(37, 99, 235, 0.08);
+}
+
+.pay-card.active {
+  border: 2px solid #3b82f6;
+
+  background:
+    linear-gradient(
+      180deg,
+      #f8fbff,
+      #eef5ff
+    );
+
+  box-shadow:
+    0 10px 22px rgba(37, 99, 235, 0.10);
+}
+
+.pay-card h3 {
+  margin: 0;
+
+  font-size: 16px;
+  line-height: 1.4;
+  font-weight: 600;
+
+  color: #0f172a;
+}
+
+.pay-card p {
+  margin-top: 10px;
+
+  font-size: 13px;
+  line-height: 1.5;
+
+  color: #64748b;
+}
+
+.pay-card strong {
+  display: block;
+
+  margin-top: 26px;
+
+  font-size: 16px;
+  line-height: 1;
+
+  font-weight: 700;
+
+  color: #1d4ed8;
+}
+
+/* =========================================================
+   DONATION SECTION
+========================================================= */
+
+.pay-donation {
+  display: flex;
+  flex-direction: column;
+
+  gap: 16px;
+
+  width: 100%;
+}
+
+.pay-input {
+  width: 100%;
+
+  height: 52px;
+
+  border-radius: 14px;
+
+  border: 1px solid #dbe4f0;
+
+  background: #ffffff;
+
+  padding: 0 16px;
+
+  font-size: 13px;
+  font-weight: 400;
+
+  color: #0f172a;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease;
+}
+
+.pay-input:focus {
+  outline: none;
+
+  border-color: #60a5fa;
+
+  box-shadow:
+    0 0 0 4px rgba(59, 130, 246, 0.10);
+}
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.pay-summary {
+  background: #ffffff;
+
+  border: 1px solid #dbe4f0;
+
+  border-radius: 22px;
+
+  padding: 24px;
+
+  box-shadow:
+    0 6px 18px rgba(15, 23, 42, 0.04);
+
+  position: sticky;
+  top: 110px;
+}
+
+.pay-summary h3 {
+  margin: 0 0 22px;
+
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 600;
+
+  color: #0f172a;
+}
+
+/* =========================================================
+   SUMMARY ROWS
+========================================================= */
+
+.pay-row {
+  display: flex;
+
+  align-items: center;
+  justify-content: space-between;
+
+  gap: 12px;
+
+  min-height: 52px;
+
+  border-bottom: 1px solid #edf2f7;
+}
+
+.pay-row:last-of-type {
+  border-bottom: none;
+}
+
+.pay-row span {
+  font-size: 12px;
+  font-weight: 500;
+
+  color: #64748b;
+}
+
+.pay-row strong {
+  text-align: right;
+
+  font-size: 13px;
+  line-height: 1.4;
+  font-weight: 600;
+
+  color: #0f172a;
+}
+
+/* =========================================================
+   TOTAL
+========================================================= */
+
+.pay-row.total {
+  margin-top: 16px;
+
+  padding-top: 16px;
+
+  border-top: 2px solid #edf2f7;
+
+  border-bottom: none;
+}
+
+.pay-row.total strong {
+  font-size: 34px;
+  font-weight: 700;
+
+  color: #1d4ed8;
+}
+
+/* =========================================================
+   BUTTON
+========================================================= */
+
+.pay-btn {
+  width: 100%;
+
+  height: 50px;
+
+  margin-top: 22px;
+
+  border: none;
+  border-radius: 14px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #2563eb,
+      #3b82f6
+    );
+
+  color: #ffffff;
+
+  font-size: 14px;
+  font-weight: 600;
+
+  cursor: pointer;
+
+  transition:
+    all 0.18s ease;
+}
+
+.pay-btn:hover {
+  transform: translateY(-1px);
+
+  box-shadow:
+    0 12px 22px rgba(59, 130, 246, 0.18);
+}
+
+/* =========================================================
+   TABLET
+========================================================= */
+
+@media (max-width: 1100px) {
+
+  .pay-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .pay-summary {
+    position: relative;
+    top: auto;
+  }
+
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 768px) {
+
+  .pay-page {
+    padding-top: 92px;
+    padding-left: 14px;
+    padding-right: 14px;
+  }
+
+  .payments-title {
+    font-size: 24px;
+  }
+
+  .payments-subtitle {
+    font-size: 12px;
+  }
+
+  .pay-tabs {
+    width: 100%;
+
+    display: grid;
+
+    grid-template-columns:
+      repeat(2, 1fr);
+  }
+
+  .pay-tabs button {
+    width: 100%;
+    min-width: auto;
+  }
+
+  .pay-left,
+  .pay-summary {
+    padding: 18px;
+
+    border-radius: 18px;
+  }
+
+  .pay-grid {
+    grid-template-columns: 1fr;
+
+    gap: 14px;
+  }
+
+  .pay-card {
+    min-height: 135px;
+
+    padding: 18px;
+  }
+
+  .pay-card h3 {
+    font-size: 15px;
+  }
+
+  .pay-card p {
+    font-size: 12px;
+  }
+
+  .pay-card strong {
+    margin-top: 18px;
+
+    font-size: 15px;
+  }
+
+  .pay-summary h3 {
+    font-size: 18px;
+  }
+
+  .pay-row {
+    min-height: 46px;
+  }
+
+  .pay-row.total strong {
+    font-size: 26px;
+  }
+
+  .pay-btn {
+    height: 48px;
+  }
+
+}

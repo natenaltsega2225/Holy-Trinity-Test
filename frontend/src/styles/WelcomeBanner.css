@@ -1,0 +1,3 @@
+/* src/styles/WelcomeBanner.css */
+.welcome-banner { width: 100%; margin: 0; padding: 0; }
+.welcome-img { display: block; width: 100%; height: clamp(120px, 20vw, 210px); object-fit: cover; }

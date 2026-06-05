@@ -1,0 +1,618 @@
+/* =========================================================
+   CERTIFICATE PREVIEW OVERLAY
+========================================================= */
+/*
+.cert-preview-overlay {
+
+  position: fixed;
+
+  inset: 0;
+
+  z-index: 99999;
+
+  background:
+    rgba(2, 6, 23, 0.82);
+
+  backdrop-filter:
+    blur(8px);
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+
+  padding: 30px;
+
+  overflow-y: auto;
+}
+
+
+
+.cert-preview-container {
+
+  width: 100%;
+
+  max-width: 1600px;
+
+  background:
+    #ffffff;
+
+  border-radius: 28px;
+
+  overflow: hidden;
+
+  box-shadow:
+    0 40px 120px rgba(0,0,0,.35);
+
+  animation:
+    certModalIn .22s ease;
+}
+
+@keyframes certModalIn {
+
+  from {
+
+    opacity: 0;
+
+    transform:
+      translateY(12px)
+      scale(.985);
+  }
+
+  to {
+
+    opacity: 1;
+
+    transform:
+      translateY(0)
+      scale(1);
+  }
+}
+
+
+
+.cert-preview-header {
+
+  display: flex;
+
+  justify-content: space-between;
+
+  align-items: center;
+
+  gap: 24px;
+
+  padding:
+    24px
+    34px;
+
+  border-bottom:
+    1px solid #e2e8f0;
+
+  background:
+    linear-gradient(
+      to right,
+      #ffffff,
+      #f8fafc
+    );
+}
+
+.cert-preview-header h2 {
+
+  margin: 0;
+
+  font-size: 2rem;
+
+  font-weight: 800;
+
+  color: #0f172a;
+}
+
+.cert-preview-header p {
+
+  margin-top: 8px;
+
+  color: #64748b;
+
+  font-size: .96rem;
+
+  line-height: 1.7;
+}
+
+
+.cert-preview-header-actions {
+
+  display: flex;
+
+  align-items: center;
+
+  gap: 12px;
+}
+
+.cert-preview-header-actions button {
+
+  display: inline-flex;
+
+  align-items: center;
+
+  justify-content: center;
+
+  gap: 10px;
+
+  border: none;
+
+  border-radius: 14px;
+
+  cursor: pointer;
+
+  transition:
+    .2s ease;
+
+  font-weight: 700;
+}
+
+
+
+.cert-preview-download {
+
+  height: 52px;
+
+  padding:
+    0 22px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #2563eb,
+      #1d4ed8
+    );
+
+  color: white;
+
+  box-shadow:
+    0 12px 24px rgba(37,99,235,.28);
+}
+
+.cert-preview-download:hover {
+
+  transform:
+    translateY(-2px);
+
+  box-shadow:
+    0 18px 34px rgba(37,99,235,.34);
+}
+
+
+
+.cert-preview-print {
+
+  height: 52px;
+
+  padding:
+    0 22px;
+
+  background:
+    #0f172a;
+
+  color: white;
+}
+
+.cert-preview-print:hover {
+
+  background:
+    #1e293b;
+}
+
+
+
+.cert-preview-close {
+
+  width: 52px;
+  height: 52px;
+
+  background:
+    #f1f5f9;
+
+  color:
+    #0f172a;
+}
+
+.cert-preview-close:hover {
+
+  background:
+    #e2e8f0;
+}
+
+
+
+.cert-preview-body {
+
+  background:
+    radial-gradient(
+      circle at top,
+      #1e3a8a,
+      #0f172a
+    );
+
+  min-height: 80vh;
+
+  padding:
+    48px;
+
+  overflow: auto;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: flex-start;
+}
+
+
+
+.cert-preview-scale {
+
+  width: 100%;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+}
+
+
+#certificate-preview-content {
+
+  width: 100%;
+
+  display: flex;
+
+  justify-content: center;
+
+  align-items: center;
+}
+
+
+
+@media (max-width: 1200px) {
+
+  .cert-preview-overlay {
+
+    padding: 12px;
+  }
+
+  .cert-preview-header {
+
+    flex-direction: column;
+
+    align-items: flex-start;
+  }
+
+  .cert-preview-header-actions {
+
+    width: 100%;
+
+    flex-wrap: wrap;
+  }
+
+  .cert-preview-header-actions button {
+
+    flex: 1;
+  }
+
+  .cert-preview-body {
+
+    padding: 20px;
+  }
+}
+
+
+@media print {
+
+  .cert-preview-header {
+
+    display: none !important;
+  }
+
+  .cert-preview-overlay,
+  .cert-preview-container,
+  .cert-preview-body {
+
+    background:
+      white !important;
+
+    box-shadow:
+      none !important;
+
+    padding:
+      0 !important;
+  }
+}*/
+
+/* =========================================================
+   OVERLAY
+========================================================= */
+
+.cert-preview-overlay{
+  position:fixed;
+  inset:0;
+
+  background:
+    rgba(15,23,42,.72);
+
+  z-index:9999;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  padding:24px;
+
+  overflow:auto;
+
+  backdrop-filter:blur(6px);
+}
+
+/* =========================================================
+   CONTAINER
+========================================================= */
+
+.cert-preview-container{
+  width:100%;
+  max-width:1600px;
+
+  background:#ffffff;
+
+  border-radius:28px;
+
+  overflow:hidden;
+
+  box-shadow:
+    0 25px 80px rgba(0,0,0,.25);
+
+  animation:
+    certPreview .22s ease;
+}
+
+@keyframes certPreview{
+
+  from{
+    opacity:0;
+    transform:translateY(12px);
+  }
+
+  to{
+    opacity:1;
+    transform:none;
+  }
+}
+
+/* =========================================================
+   HEADER
+========================================================= */
+
+.cert-preview-header{
+  display:flex;
+  align-items:flex-start;
+  justify-content:space-between;
+  gap:20px;
+
+  padding:24px 28px;
+
+  border-bottom:
+    1px solid #e2e8f0;
+
+  background:#ffffff;
+}
+
+.cert-preview-header h2{
+  margin:0;
+
+  font-size:28px;
+  font-weight:700;
+
+  color:#0f172a;
+}
+
+.cert-preview-header p{
+  margin-top:8px;
+
+  font-size:14px;
+
+  color:#64748b;
+}
+
+/* =========================================================
+   ACTIONS
+========================================================= */
+
+.cert-preview-actions{
+  display:flex;
+  align-items:center;
+  gap:12px;
+}
+
+.cert-preview-btn{
+  height:48px;
+
+  padding:0 18px;
+
+  border:none;
+  border-radius:14px;
+
+  display:flex;
+  align-items:center;
+  gap:10px;
+
+  font-size:14px;
+  font-weight:700;
+
+  cursor:pointer;
+
+  transition:.15s ease;
+}
+
+.cert-preview-btn:hover{
+  transform:translateY(-1px);
+}
+
+.cert-preview-download{
+  background:#0f172a;
+  color:#ffffff;
+}
+
+.cert-preview-download:hover{
+  background:#111c34;
+}
+
+.cert-preview-print{
+  background:#eef2f7;
+  color:#0f172a;
+}
+
+.cert-preview-print:hover{
+  background:#e2e8f0;
+}
+
+.cert-preview-close{
+  width:46px;
+  height:46px;
+
+  border:none;
+  border-radius:14px;
+
+  background:#f1f5f9;
+
+  display:flex;
+  align-items:center;
+  justify-content:center;
+
+  cursor:pointer;
+
+  transition:.15s ease;
+}
+
+.cert-preview-close:hover{
+  background:#e2e8f0;
+}
+
+/* =========================================================
+   BODY
+========================================================= */
+
+.cert-preview-body{
+  background:#edf2f7;
+
+  overflow:auto;
+
+  padding:40px;
+}
+
+/* =========================================================
+   SCALE
+========================================================= */
+
+.cert-preview-scale{
+  width:max-content;
+
+  margin:0 auto;
+
+  transform-origin:top center;
+
+  transform:scale(.72);
+}
+
+/* =========================================================
+   SCROLLBAR
+========================================================= */
+
+.cert-preview-body::-webkit-scrollbar{
+  width:10px;
+  height:10px;
+}
+
+.cert-preview-body::-webkit-scrollbar-thumb{
+  background:#cbd5e1;
+  border-radius:999px;
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width:1200px){
+
+  .cert-preview-scale{
+    transform:scale(.52);
+  }
+}
+
+@media (max-width:768px){
+
+  .cert-preview-overlay{
+    padding:10px;
+  }
+
+  .cert-preview-container{
+    border-radius:18px;
+  }
+
+  .cert-preview-header{
+    flex-direction:column;
+    align-items:flex-start;
+  }
+
+  .cert-preview-actions{
+    width:100%;
+    flex-wrap:wrap;
+  }
+
+  .cert-preview-btn{
+    flex:1;
+    justify-content:center;
+  }
+
+  .cert-preview-close{
+    flex:none;
+  }
+
+  .cert-preview-body{
+    padding:14px;
+  }
+
+  .cert-preview-scale{
+    transform:scale(.28);
+  }
+}
+
+/* =========================================================
+   PRINT
+========================================================= */
+
+@media print{
+
+  .cert-preview-header{
+    display:none !important;
+  }
+
+  .cert-preview-overlay{
+    position:static;
+    background:#ffffff;
+    padding:0;
+  }
+
+  .cert-preview-container{
+    box-shadow:none;
+    border-radius:0;
+  }
+
+  .cert-preview-body{
+    background:#ffffff;
+    padding:0;
+  }
+
+  .cert-preview-scale{
+    transform:none !important;
+  }
+}

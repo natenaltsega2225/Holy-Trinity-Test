@@ -1,0 +1,1105 @@
+/* =========================================================
+   MEMBERSHIP DASHBOARD CSS
+   Clean Enterprise UI System
+========================================================= */
+
+:root {
+  --member-primary: #1d4ed8;
+  --member-primary-dark: #1e40af;
+  --member-primary-soft: #dbeafe;
+
+  --member-success: #16a34a;
+  --member-success-soft: #dcfce7;
+
+  --member-warning: #d97706;
+  --member-warning-soft: #fef3c7;
+
+  --member-danger: #dc2626;
+  --member-danger-soft: #fee2e2;
+
+  --member-bg: #f6f8fc;
+  --member-card: #ffffff;
+  --member-border: #e5eaf1;
+
+  --member-text: #0f172a;
+  --member-text-soft: #64748b;
+
+  --member-radius: 20px;
+  --member-radius-sm: 14px;
+
+  --member-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 28px rgba(15, 23, 42, 0.06);
+
+  --member-transition: all 0.2s ease;
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+.member-page,
+.membership-page {
+  width: 100%;
+  min-height: 100vh;
+  padding: 24px;
+  background: var(--member-bg);
+  display: flex;
+  flex-direction: column;
+  gap: 22px;
+  color: var(--member-text);
+}
+
+/* =========================================================
+   PAGE HEADER
+========================================================= */
+
+.member-page-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 20px;
+  flex-wrap: wrap;
+}
+
+.member-page-eyebrow {
+  margin: 0 0 8px;
+  color: var(--member-primary);
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.member-page-header h1 {
+  margin: 0;
+  font-size: 34px;
+  line-height: 1.15;
+  font-weight: 800;
+  color: var(--member-text);
+}
+
+.member-page-header p {
+  margin-top: 12px;
+  max-width: 760px;
+  font-size: 15px;
+  line-height: 1.7;
+  color: var(--member-text-soft);
+}
+
+.member-page-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+/* =========================================================
+   CARDS
+========================================================= */
+
+.member-card,
+.membership-card {
+  background: var(--member-card);
+  border: 1px solid var(--member-border);
+  border-radius: var(--member-radius);
+  padding: 24px;
+  box-shadow: var(--member-shadow);
+}
+
+.member-loading-card {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--member-text-soft);
+}
+
+.member-card-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+  margin-bottom: 20px;
+}
+
+.member-card-header h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 800;
+  color: var(--member-text);
+}
+
+.member-card-header p {
+  margin: 8px 0 0;
+  color: var(--member-text-soft);
+  font-size: 14px;
+  line-height: 1.55;
+}
+
+.member-card-body {
+  padding-top: 4px;
+}
+
+/* =========================================================
+   SUMMARY CARDS
+========================================================= */
+
+.member-summary-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+}
+
+.member-summary-card {
+  background: var(--member-card);
+  border: 1px solid var(--member-border);
+  border-radius: var(--member-radius);
+  padding: 22px;
+  box-shadow: var(--member-shadow);
+  transition: var(--member-transition);
+}
+
+.member-summary-card:hover {
+  transform: translateY(-2px);
+}
+
+.member-summary-card span {
+  display: block;
+  margin-bottom: 12px;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+  color: var(--member-text-soft);
+}
+
+.member-summary-card h2,
+.member-summary-card strong {
+  display: block;
+  margin: 0;
+  font-size: 30px;
+  font-weight: 800;
+  line-height: 1.1;
+  color: var(--member-text);
+}
+
+.member-summary-card small {
+  display: block;
+  margin-top: 10px;
+  font-size: 13px;
+  color: var(--member-text-soft);
+}
+
+.member-summary-card.featured {
+  background: linear-gradient(135deg, #2563eb, #1d4ed8);
+  border: none;
+}
+
+.member-summary-card.featured span,
+.member-summary-card.featured h2,
+.member-summary-card.featured strong,
+.member-summary-card.featured small {
+  color: #ffffff;
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.member-btn,
+.member-link-btn,
+.member-primary-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  min-height: 42px;
+  padding: 0 18px;
+  border-radius: 12px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  font-weight: 800;
+  transition: var(--member-transition);
+}
+
+.member-link-btn {
+  background: #eef4ff;
+  color: var(--member-primary);
+  border-color: #dbeafe;
+}
+
+.member-link-btn:hover {
+  background: #dbeafe;
+}
+
+.member-primary-btn {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  color: #ffffff;
+  border-color: #2563eb;
+}
+
+.member-primary-btn:hover {
+  background: linear-gradient(135deg, #1e40af, #1d4ed8);
+}
+
+.member-primary-btn:disabled,
+.member-link-btn:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+.member-primary-btn-lg {
+  min-height: 52px;
+  padding: 0 24px;
+  font-size: 15px;
+}
+
+/* =========================================================
+   ALERTS
+========================================================= */
+
+.member-alert,
+.member-banner {
+  border-radius: 16px;
+  padding: 14px 18px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.member-alert.error,
+.member-banner-error {
+  background: #fff1f2;
+  color: #be123c;
+  border: 1px solid #fecdd3;
+}
+
+.member-banner-success {
+  background: #ecfdf5;
+  color: #166534;
+  border: 1px solid #bbf7d0;
+}
+
+/* =========================================================
+   FORM ELEMENTS
+========================================================= */
+
+.member-grid-2 {
+  display: grid;
+  grid-template-columns: repeat(2, 1fr);
+  gap: 18px;
+}
+
+.member-grid-3 {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 18px;
+}
+
+.member-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.member-field label,
+.payx-field label,
+.payx-field-label {
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--member-text-soft);
+}
+
+.member-field input,
+.member-field select,
+.member-field textarea,
+.payx-field input,
+.payx-field select,
+.payx-input {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 12px;
+  border: 1px solid #dbe3ee;
+  background: #ffffff;
+  font-size: 14px;
+  font-weight: 600;
+  color: var(--member-text);
+  transition: var(--member-transition);
+}
+
+.member-field textarea {
+  min-height: 110px;
+  padding-top: 12px;
+}
+
+.member-field input:focus,
+.member-field select:focus,
+.member-field textarea:focus,
+.payx-field input:focus,
+.payx-field select:focus,
+.payx-input:focus {
+  outline: none;
+  border-color: var(--member-primary);
+  box-shadow: 0 0 0 4px rgba(29, 78, 216, 0.1);
+}
+
+/* =========================================================
+   TABS
+========================================================= */
+
+.member-tabs-card {
+  background: #ffffff;
+  border: 1px solid var(--member-border);
+  border-radius: 18px;
+  padding: 12px;
+  box-shadow: var(--member-shadow);
+}
+
+.member-tabs-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.member-tab-tile {
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  border-radius: 12px;
+  min-height: 42px;
+  padding: 0 18px;
+  cursor: pointer;
+  transition: var(--member-transition);
+}
+
+.member-tab-title {
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--member-text);
+}
+
+.member-tab-tile.is-active {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  border-color: #2563eb;
+}
+
+.member-tab-tile.is-active .member-tab-title {
+  color: #ffffff;
+}
+
+/* =========================================================
+   MEMBERSHIP RENEWAL PAGE
+========================================================= */
+
+.renewal-page {
+  max-width: 1600px;
+  margin: 0 auto;
+}
+
+.renewal-mode-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(180px, 1fr));
+  gap: 14px;
+}
+
+.renewal-option-card,
+.renewal-plan-card {
+  width: 100%;
+  text-align: left;
+  border: 1px solid #dbe4f0;
+  background: #ffffff;
+  border-radius: 18px;
+  padding: 18px;
+  min-height: 122px;
+  cursor: pointer;
+  transition: var(--member-transition);
+}
+
+.renewal-option-card:hover,
+.renewal-plan-card:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  transform: translateY(-2px);
+}
+
+.renewal-option-card.active,
+.renewal-plan-card.active {
+  border-color: var(--member-primary);
+  background: linear-gradient(180deg, #f8fbff, #eef6ff);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.renewal-option-card strong,
+.renewal-plan-card h3 {
+  display: block;
+  margin: 0 0 8px;
+  font-size: 16px;
+  font-weight: 800;
+  color: var(--member-text);
+}
+
+.renewal-option-card span,
+.renewal-plan-card p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--member-text-soft);
+}
+
+.renewal-price {
+  margin: 10px 0;
+  font-size: 22px;
+  font-weight: 900;
+  color: var(--member-primary);
+}
+
+.renewal-plan-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(170px, 1fr));
+  gap: 14px;
+  margin-bottom: 20px;
+}
+
+/* =========================================================
+   ENTERPRISE MONTH/YEAR BUILDER
+========================================================= */
+
+.renewal-date-builder {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(260px, 1fr));
+  gap: 18px;
+}
+
+.renewal-date-card {
+  border: 1px solid #dbe4f0;
+  border-radius: 18px;
+  padding: 18px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.renewal-date-card label {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 13px;
+  font-weight: 900;
+  color: #1f3a68;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.renewal-date-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 12px;
+}
+
+.renewal-date-row select {
+  width: 100%;
+  height: 48px;
+  border: 1px solid #cfd8e6;
+  border-radius: 12px;
+  padding: 0 12px;
+  font-size: 15px;
+  font-weight: 800;
+  color: var(--member-text);
+  background: #ffffff;
+  cursor: pointer;
+  transition: var(--member-transition);
+}
+
+.renewal-date-row select:focus {
+  outline: none;
+  border-color: var(--member-primary);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.13);
+}
+
+/* =========================================================
+   RENEWAL SUMMARY
+========================================================= */
+
+.renewal-summary-card {
+  border-color: #dbeafe;
+}
+
+.renewal-summary-grid {
+  display: grid;
+  grid-template-columns: 2fr 1fr 1fr 1.2fr;
+  gap: 14px;
+}
+
+.renewal-summary-item {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.renewal-summary-item span {
+  display: block;
+  margin-bottom: 10px;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--member-text-soft);
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+
+.renewal-summary-item strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--member-text);
+  line-height: 1.35;
+}
+
+.renewal-summary-item.total {
+  background: linear-gradient(135deg, #1d4ed8, #2563eb);
+  border-color: #2563eb;
+}
+
+.renewal-summary-item.total span,
+.renewal-summary-item.total strong {
+  color: #ffffff;
+}
+
+/* =========================================================
+   COVERAGE PREVIEW
+========================================================= */
+
+.coverage-preview-grid {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.coverage-preview-item {
+  min-width: 82px;
+  border: 1px solid #dbeafe;
+  background: #f8fbff;
+  border-radius: 14px;
+  padding: 12px;
+  text-align: center;
+}
+
+.coverage-preview-item span {
+  display: block;
+  font-size: 12px;
+  font-weight: 900;
+  color: var(--member-primary);
+  text-transform: uppercase;
+}
+
+.coverage-preview-item strong {
+  display: block;
+  margin-top: 4px;
+  font-size: 13px;
+  font-weight: 800;
+  color: var(--member-text);
+}
+
+.renewal-action-card {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  background: linear-gradient(180deg, #ffffff, #f8fbff);
+}
+
+.renewal-action-card h2 {
+  margin: 0;
+  font-size: 22px;
+  font-weight: 900;
+}
+
+.renewal-action-card p {
+  margin: 8px 0 0;
+  color: var(--member-text-soft);
+}
+
+/* =========================================================
+   SUBSCRIPTION STATUS
+========================================================= */
+
+.subscription-status-card {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+  margin: 18px 0;
+}
+
+.subscription-status-card > div {
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  border-radius: 16px;
+  padding: 16px;
+}
+
+.subscription-status-card span {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 900;
+  color: var(--member-text-soft);
+  text-transform: uppercase;
+}
+
+.subscription-status-card strong {
+  display: block;
+  font-size: 16px;
+  font-weight: 900;
+}
+
+/* =========================================================
+   COVERAGE GRID
+========================================================= */
+
+.coverage-active-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 16px;
+  margin-top: 20px;
+}
+
+.coverage-info-box {
+  background: #ffffff;
+  border: 1px solid #e7ecf3;
+  border-radius: 18px;
+  padding: 18px;
+  min-height: 100px;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  transition: var(--member-transition);
+}
+
+.coverage-info-box:hover {
+  transform: translateY(-2px);
+  border-color: #d8e4ff;
+  box-shadow: var(--member-shadow);
+}
+
+.coverage-info-box span {
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--member-text-soft);
+  margin-bottom: 10px;
+}
+
+.coverage-info-box strong {
+  font-size: 17px;
+  line-height: 1.4;
+  font-weight: 800;
+  color: var(--member-text);
+  word-break: break-word;
+}
+
+.coverage-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
+  gap: 18px;
+  margin-top: 22px;
+}
+
+.coverage-month {
+  position: relative;
+  border-radius: 20px;
+  padding: 18px;
+  border: 1px solid #e2e8f0;
+  background: #ffffff;
+  transition: var(--member-transition);
+  overflow: hidden;
+}
+
+.coverage-month:hover {
+  transform: translateY(-3px);
+  box-shadow: var(--member-shadow);
+}
+
+.coverage-month.paid {
+  border-color: #bfe5cf;
+  background: linear-gradient(180deg, #ffffff 0%, #f4fbf7 100%);
+}
+
+.coverage-month.unpaid {
+  border-color: #f1d4d4;
+  background: linear-gradient(180deg, #ffffff 0%, #fff8f8 100%);
+}
+
+.coverage-month-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.coverage-month-name {
+  font-size: 18px;
+  font-weight: 900;
+  color: var(--member-text);
+}
+
+.coverage-month-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+
+.coverage-meta {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.coverage-meta small {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  color: var(--member-text-soft);
+}
+
+.coverage-meta span {
+  font-size: 14px;
+  font-weight: 700;
+  color: var(--member-text);
+  word-break: break-word;
+}
+
+/* =========================================================
+   STATUS BADGES
+========================================================= */
+
+.member-status-badge,
+.member-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 26px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+.member-status-badge.success,
+.member-badge-success {
+  background: var(--member-success-soft);
+  color: #166534;
+}
+
+.member-status-badge.warning,
+.member-badge-warning {
+  background: var(--member-warning-soft);
+  color: #92400e;
+}
+
+.member-status-badge.danger,
+.member-badge-danger {
+  background: var(--member-danger-soft);
+  color: #991b1b;
+}
+
+/* =========================================================
+   TABLES
+========================================================= */
+
+.member-table-wrap {
+  width: 100%;
+  overflow-x: auto;
+  margin-top: 20px;
+}
+
+.member-table {
+  width: 100%;
+  border-collapse: collapse;
+  min-width: 900px;
+}
+
+.member-table thead {
+  background: #f8fafc;
+}
+
+.member-table th {
+  padding: 14px 16px;
+  text-align: left;
+  font-size: 12px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--member-text-soft);
+  border-bottom: 1px solid var(--member-border);
+}
+
+.member-table td {
+  padding: 16px;
+  font-size: 14px;
+  color: var(--member-text);
+  border-bottom: 1px solid #edf2f7;
+  vertical-align: middle;
+}
+
+.member-table tbody tr:hover {
+  background: #f8fbff;
+}
+
+/* =========================================================
+   MOBILE RESPONSIVE
+========================================================= */
+
+@media (max-width: 1180px) {
+  .renewal-mode-grid,
+  .renewal-plan-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .renewal-summary-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+
+  .subscription-status-card {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 768px) {
+  .member-page,
+  .membership-page {
+    padding: 14px;
+    gap: 16px;
+  }
+
+  .member-page-header {
+    flex-direction: column;
+  }
+
+  .member-page-header h1 {
+    font-size: 26px;
+  }
+
+  .member-card {
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .member-summary-grid,
+  .renewal-mode-grid,
+  .renewal-plan-grid,
+  .renewal-date-builder,
+  .renewal-summary-grid,
+  .coverage-active-grid,
+  .coverage-grid,
+  .member-grid-2,
+  .member-grid-3 {
+    grid-template-columns: 1fr;
+  }
+
+  .renewal-date-row {
+    grid-template-columns: 1fr 1fr;
+  }
+
+  .renewal-action-card {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .member-primary-btn,
+  .member-link-btn {
+    width: 100%;
+  }
+
+  .coverage-preview-item {
+    flex: 1 1 calc(50% - 10px);
+  }
+
+  .member-table {
+    min-width: 760px;
+  }
+}
+
+@media (max-width: 430px) {
+  .renewal-date-row {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-preview-item {
+    flex: 1 1 100%;
+  }
+
+  .member-summary-card h2,
+  .member-summary-card strong {
+    font-size: 26px;
+  }
+}
+
+/* =========================================================
+   ENTERPRISE COVERAGE CALENDAR CLEAN UI
+========================================================= */
+
+.coverage-grid-clean {
+  grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+  gap: 18px;
+}
+
+.coverage-month-clean {
+  min-height: 230px;
+  padding: 22px;
+  border-radius: 22px;
+  background: #ffffff;
+  border: 1px solid #e5eaf1;
+  box-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 10px 22px rgba(15, 23, 42, 0.04);
+}
+
+.coverage-month-clean.paid {
+  background: linear-gradient(180deg, #ffffff 0%, #f4fbf7 100%);
+  border-color: #bfe8cf;
+}
+
+.coverage-month-clean.unpaid {
+  background: linear-gradient(180deg, #ffffff 0%, #fff8f8 100%);
+  border-color: #f3caca;
+}
+
+.coverage-month-clean-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 22px;
+}
+
+.coverage-month-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.coverage-month-clean h3 {
+  margin: 0;
+  font-size: 28px;
+  font-weight: 900;
+  letter-spacing: -0.03em;
+  color: #0f172a;
+}
+
+.coverage-status-pill {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 30px;
+  padding: 0 13px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+}
+
+.coverage-status-pill.paid {
+  background: #dcfce7;
+  color: #166534;
+}
+
+.coverage-status-pill.unpaid {
+  background: #fee2e2;
+  color: #991b1b;
+}
+
+.coverage-month-clean-body {
+  display: grid;
+  grid-template-columns: 42px 1fr;
+  gap: 14px;
+  align-items: flex-start;
+  min-height: 86px;
+}
+
+.coverage-clean-icon {
+  width: 42px;
+  height: 42px;
+  border-radius: 14px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 20px;
+  font-weight: 900;
+}
+
+.coverage-clean-icon.success {
+  background: #dcfce7;
+  color: #15803d;
+}
+
+.coverage-clean-icon.warning {
+  background: #fee2e2;
+  color: #b91c1c;
+}
+
+.coverage-month-clean-body strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.coverage-month-clean-body p {
+  margin: 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: #64748b;
+}
+
+.coverage-month-clean-footer {
+  margin-top: 20px;
+  padding-top: 16px;
+  border-top: 1px solid #e5eaf1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+}
+
+.coverage-month-clean-footer span {
+  font-size: 11px;
+  font-weight: 900;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: #64748b;
+}
+
+.coverage-month-clean-footer strong {
+  font-size: 15px;
+  font-weight: 900;
+  color: #0f172a;
+}
+
+.coverage-overview-card {
+  background: linear-gradient(180deg, #ffffff 0%, #f8fbff 100%);
+}
+
+@media (max-width: 768px) {
+  .coverage-grid-clean {
+    grid-template-columns: 1fr;
+  }
+
+  .coverage-month-clean {
+    min-height: auto;
+    padding: 18px;
+  }
+
+  .coverage-month-clean h3 {
+    font-size: 24px;
+  }
+}

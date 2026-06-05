@@ -1,0 +1,137 @@
+.history-timeline {
+  display: flex;
+  flex-direction: column;
+  gap: 2rem;
+  margin-bottom: 2.4rem;
+}
+
+.history-card {
+  overflow: hidden;
+  transition: all 0.28s ease;
+}
+
+.history-card:hover {
+  transform: translateY(-4px);
+  box-shadow: 0 14px 34px rgba(0, 0, 0, 0.12);
+}
+
+.history-card-content {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 1.4rem;
+  padding: 2rem;
+}
+
+@media (min-width: 768px) {
+  .history-card-content {
+    flex-direction: row;
+    align-items: center;
+    gap: 1.75rem;
+  }
+}
+
+.history-icon-wrapper {
+  flex-shrink: 0;
+  width: 4.5rem;
+  height: 4.5rem;
+  border-radius: 16px;
+}
+
+.history-icon {
+  width: 1.9rem;
+  height: 1.9rem;
+  color: #fffdf8;
+}
+
+.history-text {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  justify-content: center;
+  text-align: left;
+}
+
+.history-year-row {
+  display: flex;
+  align-items: center;
+  gap: 0.75rem;
+  margin-bottom: 0.55rem;
+}
+
+.history-year {
+  font-weight: 800;
+  color: #9b7a34;
+  font-size: 1.05rem;
+  white-space: nowrap;
+}
+
+.history-line {
+  height: 1px;
+  background-color: rgba(120, 98, 59, 0.24);
+  flex: 1;
+}
+
+.history-milestone-title {
+  font-size: clamp(1.12rem, 2vw, 1.4rem);
+  font-weight: 800;
+  color: #1e3153;
+  margin-bottom: 0.45rem;
+  letter-spacing: -0.01em;
+}
+
+.history-milestone-desc {
+  color: #4a5b77;
+  line-height: 1.7;
+  font-size: clamp(0.95rem, 1.8vw, 1.04rem);
+  max-width: 680px;
+}
+
+.history-additional {
+  display: flex;
+  flex-direction: column;
+  gap: 1.6rem;
+  text-align: center;
+  margin-top: 1rem;
+}
+
+.history-additional-card {
+  padding: clamp(2rem, 3vw, 3rem);
+  max-width: 920px;
+  margin: 0 auto;
+  transition: transform 0.28s ease, box-shadow 0.28s ease;
+  text-align: center;
+}
+
+.history-additional-card:hover {
+  transform: translateY(-3px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.history-additional-card h3 {
+  font-size: clamp(1.5rem, 2.5vw, 2rem);
+  font-weight: 800;
+  color: #1f3a67;
+  margin-bottom: 1.2rem;
+  letter-spacing: -0.02em;
+}
+
+.history-additional-card p {
+  font-size: clamp(1rem, 1.8vw, 1.08rem);
+  line-height: 1.85;
+  color: #4a5b77;
+  margin-bottom: 1rem;
+}
+
+.animate-fade-in-up {
+  opacity: 0;
+  transform: translateY(20px);
+  animation: fadeInUp 0.6s ease forwards;
+}
+
+@keyframes fadeInUp {
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}

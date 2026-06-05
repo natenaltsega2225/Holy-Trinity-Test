@@ -1,0 +1,114 @@
+/* frontend\src\styles\media_resources.css============================
+   Section Wrapper
+============================ */
+.mr-section {
+  padding: 80px 0;
+  background: #faf9f7;
+}
+
+.mr-container {
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  text-align: center;
+}
+
+.mr-head {
+  margin-bottom: 16px;
+}
+
+.mr-title {
+  font-size: clamp(30px, 4vw, 48px);
+  font-weight: 800;
+  color: #133a74;
+  margin-bottom: 16px;
+  line-height: 1.1;
+}
+
+.mr-sub {
+  color: #3b4c6a;
+  font-size: clamp(15px, 2vw, 19px);
+  line-height: 1.7;
+  max-width: 760px;
+  margin: 0 auto;
+}
+
+/* ============================
+   Cards Grid
+============================ */
+.mr-cards {
+  display: grid;
+  gap: 24px;
+  margin-top: 40px;
+  grid-template-columns: repeat(2, minmax(0, 360px));
+  justify-content: center;
+}
+
+.mr-card {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 32px 28px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.05);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  min-height: 260px;
+  width: 100%;
+  transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.mr-card:hover {
+  transform: translateY(-6px);
+  box-shadow: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.mr-card-icon {
+  margin-bottom: 20px;
+}
+
+.mr-card-title {
+  font-size: clamp(22px, 2.2vw, 28px);
+  font-weight: 700;
+  margin: 0 0 14px;
+  color: #0f2d5c;
+}
+
+.mr-card-desc {
+  font-size: clamp(15px, 1.8vw, 17px);
+  color: #516382;
+  line-height: 1.7;
+  margin: 0;
+}
+
+/* ============================
+   Mobile Adjustments
+============================ */
+@media (max-width: 640px) {
+  .mr-section {
+    padding: 64px 0;
+  }
+
+  .mr-container {
+    padding: 0 18px;
+  }
+
+  .mr-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .mr-card {
+    padding: 24px 22px;
+    min-height: auto;
+  }
+
+  .mr-title {
+    margin-bottom: 12px;
+  }
+
+  .mr-sub {
+    font-size: 15px;
+  }
+}

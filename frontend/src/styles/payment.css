@@ -1,0 +1,1016 @@
+/* =========================================================
+   UPDATED PAYMENT.CSS
+   CLEAN ENTERPRISE LAYOUT
+========================================================= */
+
+/* =========================================================
+   PAYMENT.CSS
+   Enterprise Payment Workflow UI
+   Scope: Make Payment, Membership Plans, Custom Months,
+   Donation, Program, Pledge, Checkout Summary
+========================================================= */
+
+/* =========================================================
+   PAYMENT DESIGN TOKENS
+========================================================= */
+
+:root {
+  --payx-primary: #1d4ed8;
+  --payx-primary-600: #2563eb;
+  --payx-primary-700: #1e40af;
+  --payx-primary-soft: #eff6ff;
+
+  --payx-success: #16a34a;
+  --payx-success-soft: #dcfce7;
+
+  --payx-warning: #d97706;
+  --payx-warning-soft: #fef3c7;
+
+  --payx-danger: #dc2626;
+  --payx-danger-soft: #fee2e2;
+
+  --payx-bg: #f6f8fc;
+  --payx-card: #ffffff;
+  --payx-muted: #f8fafc;
+
+  --payx-border: #dbe4f0;
+  --payx-border-soft: #e8eef7;
+
+  --payx-text: #0f172a;
+  --payx-text-soft: #64748b;
+  --payx-text-faint: #94a3b8;
+
+  --payx-radius-xl: 22px;
+  --payx-radius-lg: 18px;
+  --payx-radius-md: 14px;
+  --payx-radius-sm: 10px;
+
+  --payx-shadow:
+    0 1px 2px rgba(15, 23, 42, 0.04),
+    0 12px 28px rgba(15, 23, 42, 0.06);
+
+  --payx-shadow-soft:
+    0 1px 2px rgba(15, 23, 42, 0.04);
+
+  --payx-transition: all 0.18s ease;
+}
+
+/* =========================================================
+   PAYMENT PAGE SHELL
+========================================================= */
+
+.payx-shell {
+  width: 100%;
+  padding: 0;
+  background: transparent;
+}
+
+.payx-layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 390px;
+  gap: 22px;
+  align-items: start;
+}
+
+/* =========================================================
+   PANELS
+========================================================= */
+
+.payx-panel {
+  background: var(--payx-card);
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-xl);
+  padding: 24px;
+  box-shadow: var(--payx-shadow-soft);
+}
+
+.payx-panel + .payx-panel {
+  margin-top: 18px;
+}
+
+.payx-panel-summary {
+  position: sticky;
+  top: 18px;
+  padding: 22px;
+}
+
+/* =========================================================
+   SECTION HEADER
+========================================================= */
+
+.payx-section-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 18px;
+}
+
+.payx-section-head-tight {
+  margin-bottom: 14px;
+}
+
+.payx-section-title {
+  margin: 0;
+  font-size: 19px;
+  line-height: 1.25;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-section-subtitle {
+  margin: 7px 0 0;
+  max-width: 760px;
+  font-size: 13px;
+  line-height: 1.6;
+  color: var(--payx-text-soft);
+}
+
+/* =========================================================
+   PAYMENT TYPE SELECTOR
+========================================================= */
+
+.payx-frequency-tabs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin: 0 0 20px;
+}
+
+.payx-frequency-tab {
+  min-height: 42px;
+  padding: 0 18px;
+  border: 1px solid var(--payx-border);
+  border-radius: 13px;
+  background: #ffffff;
+  color: #334155;
+  font-size: 13px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: var(--payx-transition);
+}
+
+.payx-frequency-tab:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+}
+
+.payx-frequency-tab.is-active {
+  color: #ffffff;
+  border-color: var(--payx-primary);
+  background: linear-gradient(135deg, var(--payx-primary), var(--payx-primary-600));
+  box-shadow: 0 8px 18px rgba(37, 99, 235, 0.18);
+}
+
+/* =========================================================
+   FORM GRID / FIELDS
+========================================================= */
+
+.payx-form-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.payx-field {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.payx-field label,
+.payx-field-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 850;
+  line-height: 1.2;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-field input,
+.payx-field select,
+.payx-field textarea,
+.payx-input,
+.payx-select,
+select.payx-input {
+  width: 100%;
+  min-height: 46px;
+  border: 1px solid var(--payx-border);
+  border-radius: 13px;
+  background: #ffffff;
+  padding: 0 14px;
+  font-size: 14px;
+  font-weight: 650;
+  color: var(--payx-text);
+  transition: var(--payx-transition);
+}
+
+.payx-field textarea {
+  min-height: 110px;
+  padding-top: 12px;
+  resize: vertical;
+}
+
+.payx-field input:focus,
+.payx-field select:focus,
+.payx-field textarea:focus,
+.payx-input:focus,
+.payx-select:focus,
+select.payx-input:focus {
+  outline: none;
+  border-color: var(--payx-primary-600);
+  box-shadow: 0 0 0 4px rgba(37, 99, 235, 0.12);
+}
+
+/* =========================================================
+   MEMBERSHIP PAYMENT PANEL
+========================================================= */
+
+.payx-membership-enterprise {
+  padding: 24px;
+}
+
+.payx-renewal-mode-row {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.payx-renewal-mode {
+  width: 100%;
+  min-height: 92px;
+  padding: 16px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--payx-transition);
+}
+
+.payx-renewal-mode strong {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 15px;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-renewal-mode span {
+  display: block;
+  font-size: 13px;
+  line-height: 1.5;
+  color: var(--payx-text-soft);
+}
+
+.payx-renewal-mode:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  transform: translateY(-1px);
+}
+
+.payx-renewal-mode.is-active {
+  border-color: var(--payx-primary-600);
+  background: linear-gradient(180deg, #ffffff, #eff6ff);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.11);
+}
+
+/* =========================================================
+   SUBSECTIONS
+========================================================= */
+
+.payx-subsection {
+  margin-top: 20px;
+}
+
+.payx-subsection-head {
+  display: flex;
+  align-items: flex-end;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 12px;
+}
+
+.payx-subsection-head h4 {
+  margin: 0;
+  font-size: 15px;
+  line-height: 1.25;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-subsection-head span {
+  font-size: 12px;
+  color: var(--payx-text-soft);
+}
+
+/* =========================================================
+   SUBSCRIPTION PLAN CARDS
+========================================================= */
+
+.payx-plan-grid,
+.payx-plan-grid-compact {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.payx-plan-card,
+.payx-plan-card-compact {
+  width: 100%;
+  min-height: 132px;
+  padding: 16px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  text-align: left;
+  cursor: pointer;
+  transition: var(--payx-transition);
+  display: flex;
+  flex-direction: column;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.payx-plan-card:hover {
+  border-color: #93c5fd;
+  background: #f8fbff;
+  transform: translateY(-2px);
+  box-shadow: var(--payx-shadow-soft);
+}
+
+.payx-plan-card.active {
+  border-color: var(--payx-primary-600);
+  background: linear-gradient(180deg, #ffffff 0%, #eff6ff 100%);
+  box-shadow: 0 0 0 3px rgba(37, 99, 235, 0.12);
+}
+
+.payx-plan-top h4 {
+  margin: 0;
+  font-size: 14px;
+  line-height: 1.35;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-plan-price {
+  margin-top: 8px;
+  font-size: 18px;
+  line-height: 1;
+  font-weight: 900;
+  color: var(--payx-primary);
+}
+
+.payx-plan-meta-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding-top: 10px;
+  border-top: 1px solid var(--payx-border-soft);
+}
+
+.payx-plan-meta-row span {
+  font-size: 11px;
+  font-weight: 800;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-plan-meta-row strong {
+  font-size: 12px;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-plan-selected {
+  display: inline-flex;
+  align-items: center;
+  width: fit-content;
+  min-height: 24px;
+  padding: 0 9px;
+  border-radius: 999px;
+  background: var(--payx-primary-soft);
+  color: var(--payx-primary);
+  font-size: 11px;
+  font-weight: 850;
+}
+
+/* =========================================================
+   LEGACY PLAN GRID SUPPORT
+========================================================= */
+
+.payx-preset-grid {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(150px, 1fr));
+  gap: 12px;
+}
+
+.payx-preset-btn {
+  min-height: 118px;
+  padding: 16px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  cursor: pointer;
+  transition: var(--payx-transition);
+  text-align: left;
+}
+
+.payx-preset-btn:hover,
+.payx-preset-btn.is-selected {
+  border-color: var(--payx-primary-600);
+  background: #eff6ff;
+}
+
+.payx-preset-btn div {
+  font-size: 14px;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+/* =========================================================
+   CUSTOM MISSING MONTHS CARD
+========================================================= */
+
+.payx-renewal-card {
+  margin-top: 22px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-xl);
+  background: linear-gradient(180deg, #ffffff 0%, #fbfdff 100%);
+  padding: 18px;
+}
+
+.payx-renewal-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 14px;
+  margin-bottom: 16px;
+}
+
+.payx-renewal-card-head h4 {
+  margin: 0;
+  font-size: 15px;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-renewal-card-head p {
+  margin: 7px 0 0;
+  max-width: 620px;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--payx-text-soft);
+}
+
+.payx-renewal-grid {
+  display: grid;
+  grid-template-columns: 130px 1fr 1fr 180px;
+  gap: 12px;
+  align-items: end;
+}
+
+.payx-renewal-total-box {
+  min-height: 46px;
+  border: 1px solid #bfdbfe;
+  border-radius: 14px;
+  background: #eff6ff;
+  padding: 11px 13px;
+}
+
+.payx-renewal-total-box span {
+  display: block;
+  margin-bottom: 3px;
+  font-size: 10px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-renewal-total-box strong {
+  display: block;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--payx-primary);
+}
+
+.payx-renewal-total-box small {
+  display: block;
+  margin-top: 2px;
+  font-size: 11px;
+  font-weight: 700;
+  color: var(--payx-text-soft);
+}
+
+/* =========================================================
+   COVERAGE PREVIEW PILLS
+========================================================= */
+
+.payx-coverage-preview-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.payx-coverage-preview-row span {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 28px;
+  padding: 0 10px;
+  border: 1px solid #bfdbfe;
+  border-radius: 999px;
+  background: #eff6ff;
+  color: var(--payx-primary);
+  font-size: 12px;
+  font-weight: 850;
+}
+
+/* =========================================================
+   SELECTED PLAN PREVIEW
+========================================================= */
+
+.payx-plan-preview,
+.payx-plan-preview-compact {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin-top: 20px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-xl);
+  background: #ffffff;
+  padding: 18px;
+}
+
+.payx-plan-preview-label {
+  display: block;
+  margin-bottom: 7px;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-plan-preview-left h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 900;
+  color: var(--payx-text);
+}
+
+.payx-plan-preview-left p {
+  margin: 8px 0 0;
+  font-size: 13px;
+  line-height: 1.55;
+  color: var(--payx-text-soft);
+}
+
+.payx-plan-preview-price {
+  font-size: 26px;
+  font-weight: 950;
+  color: var(--payx-primary);
+  white-space: nowrap;
+}
+
+/* =========================================================
+   CHECKBOX ROW
+========================================================= */
+
+.payx-check-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 16px;
+  padding: 14px 16px;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  color: var(--payx-text);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.payx-check-row input {
+  width: 16px;
+  height: 16px;
+  accent-color: var(--payx-primary);
+}
+
+/* =========================================================
+   DONATION / PROGRAM GENERIC CARDS
+========================================================= */
+
+.payx-option-grid,
+.payx-program-grid,
+.payx-donation-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 12px;
+}
+
+.payx-option-card,
+.payx-program-card,
+.payx-donation-card {
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  padding: 16px;
+  cursor: pointer;
+  transition: var(--payx-transition);
+}
+
+.payx-option-card:hover,
+.payx-program-card:hover,
+.payx-donation-card:hover,
+.payx-option-card.active,
+.payx-program-card.active,
+.payx-donation-card.active {
+  border-color: var(--payx-primary-600);
+  background: #eff6ff;
+}
+
+/* =========================================================
+   PAYMENT SUMMARY PANEL
+========================================================= */
+
+.payx-summary-header {
+  margin-bottom: 16px;
+}
+
+.payx-summary-kicker {
+  display: block;
+  margin-bottom: 8px;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-summary-title {
+  margin: 0;
+  font-size: 19px;
+  font-weight: 900;
+  color: var(--payx-text);
+}
+
+.payx-summary-card {
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  background: #ffffff;
+  overflow: hidden;
+}
+
+.payx-summary-row {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  gap: 14px;
+  align-items: center;
+  min-height: 52px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--payx-border-soft);
+}
+
+.payx-summary-row:last-child {
+  border-bottom: none;
+}
+
+.payx-summary-row span {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-summary-row strong {
+  text-align: right;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 850;
+  color: var(--payx-text);
+  word-break: break-word;
+}
+
+/* Compatibility for old PaymentSummaryPanel */
+.payx-summary-grid,
+.payx-summary-grid-tall {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  border: 1px solid var(--payx-border);
+  border-radius: var(--payx-radius-lg);
+  overflow: hidden;
+  background: #ffffff;
+}
+
+.payx-summary-box {
+  display: grid;
+  grid-template-columns: 130px minmax(0, 1fr);
+  align-items: center;
+  min-height: 52px;
+  padding: 12px 15px;
+  border-bottom: 1px solid var(--payx-border-soft);
+  background: #ffffff;
+}
+
+.payx-summary-box:last-child {
+  border-bottom: none;
+}
+
+.payx-summary-label {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-summary-box strong {
+  text-align: right;
+  font-size: 13px;
+  line-height: 1.35;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+.payx-summary-box-highlight {
+  background: linear-gradient(135deg, #173d73, #1d4ed8);
+}
+
+.payx-summary-box-highlight .payx-summary-label,
+.payx-summary-box-highlight strong {
+  color: #ffffff;
+}
+
+/* =========================================================
+   TOTAL CARD
+========================================================= */
+
+.payx-total-card {
+  margin-top: 14px;
+  padding: 18px;
+  border-radius: var(--payx-radius-lg);
+  background: linear-gradient(135deg, #173d73, #1d4ed8);
+  color: #ffffff;
+}
+
+.payx-total-label {
+  display: block;
+  margin-bottom: 6px;
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.88;
+}
+
+.payx-total-value {
+  font-size: 30px;
+  font-weight: 950;
+  line-height: 1;
+}
+
+/* =========================================================
+   CHECKOUT INFO
+========================================================= */
+
+.payx-checkout-info {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.payx-info-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  min-height: 38px;
+  padding: 0 12px;
+  border: 1px solid var(--payx-border-soft);
+  border-radius: 12px;
+  background: #ffffff;
+}
+
+.payx-info-item span {
+  font-size: 11px;
+  font-weight: 850;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--payx-text-soft);
+}
+
+.payx-info-item strong {
+  font-size: 12px;
+  font-weight: 850;
+  color: var(--payx-text);
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.payx-actions,
+.payx-renewal-actions {
+  margin-top: 16px;
+}
+
+.payx-btn,
+.payx-checkout-btn {
+  width: 100%;
+  min-height: 46px;
+  border: none;
+  border-radius: 14px;
+  font-size: 13px;
+  font-weight: 850;
+  cursor: pointer;
+  transition: var(--payx-transition);
+}
+
+.payx-btn-primary,
+.payx-checkout-btn {
+  color: #ffffff;
+  background: linear-gradient(135deg, var(--payx-primary), var(--payx-primary-600));
+  box-shadow: 0 10px 18px rgba(37, 99, 235, 0.18);
+}
+
+.payx-btn-primary:hover,
+.payx-checkout-btn:hover {
+  background: linear-gradient(135deg, var(--payx-primary-700), var(--payx-primary));
+}
+
+.payx-btn-secondary {
+  color: var(--payx-primary);
+  border: 1px solid #bfdbfe;
+  background: #eff6ff;
+}
+
+.payx-btn-secondary:hover {
+  background: #dbeafe;
+}
+
+.payx-btn-small {
+  width: auto;
+  min-height: 38px;
+  padding: 0 14px;
+  font-size: 12px;
+}
+
+.payx-btn:disabled,
+.payx-checkout-btn:disabled {
+  opacity: 0.62;
+  cursor: not-allowed;
+  box-shadow: none;
+}
+
+.payx-summary-footer {
+  margin-top: 12px;
+  color: var(--payx-text-soft);
+  font-size: 11px;
+  line-height: 1.55;
+}
+
+/* =========================================================
+   STATUS BADGES
+========================================================= */
+
+.finance-status-badge {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 24px;
+  padding: 0 10px;
+  border-radius: 999px;
+  font-size: 11px;
+  font-weight: 850;
+}
+
+.finance-status-badge.paid {
+  background: var(--payx-success-soft);
+  color: #166534;
+}
+
+.finance-status-badge.pending {
+  background: var(--payx-warning-soft);
+  color: #92400e;
+}
+
+.finance-status-badge.failed,
+.finance-status-badge.danger {
+  background: var(--payx-danger-soft);
+  color: #991b1b;
+}
+
+/* =========================================================
+   RESPONSIVE
+========================================================= */
+
+@media (max-width: 1280px) {
+  .payx-layout {
+    grid-template-columns: minmax(0, 1fr) 360px;
+  }
+
+  .payx-plan-grid,
+  .payx-plan-grid-compact,
+  .payx-preset-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+
+  .payx-renewal-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 1100px) {
+  .payx-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .payx-panel-summary {
+    position: static;
+  }
+}
+
+@media (max-width: 768px) {
+  .payx-panel {
+    padding: 18px;
+    border-radius: 18px;
+  }
+
+  .payx-frequency-tabs,
+  .payx-renewal-mode-row,
+  .payx-form-grid,
+  .payx-option-grid,
+  .payx-program-grid,
+  .payx-donation-grid,
+  .payx-plan-grid,
+  .payx-plan-grid-compact,
+  .payx-preset-grid,
+  .payx-renewal-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .payx-frequency-tabs {
+    display: grid;
+  }
+
+  .payx-frequency-tab {
+    width: 100%;
+  }
+
+  .payx-renewal-card-head,
+  .payx-plan-preview,
+  .payx-plan-preview-compact {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .payx-plan-preview-price {
+    font-size: 24px;
+  }
+
+  .payx-summary-row,
+  .payx-summary-box {
+    grid-template-columns: 1fr;
+    gap: 5px;
+  }
+
+  .payx-summary-row strong,
+  .payx-summary-box strong {
+    text-align: left;
+  }
+
+  .payx-total-value {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 460px) {
+  .payx-panel {
+    padding: 15px;
+  }
+
+  .payx-section-title,
+  .payx-summary-title {
+    font-size: 17px;
+  }
+
+  .payx-plan-card,
+  .payx-preset-btn {
+    min-height: 112px;
+  }
+
+  .payx-check-row {
+    align-items: flex-start;
+  }
+}

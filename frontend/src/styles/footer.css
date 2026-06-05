@@ -1,0 +1,360 @@
+/* =============================
+   Base Footer
+============================= 
+.footer {
+  background: linear-gradient(90deg, #123A78, #1E4B8E); 
+  color: #ffffff;
+  padding: 3rem 1rem;
+  font-family: 'Segoe UI', Arial, sans-serif;
+}
+
+.footer-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+
+.footer-cards {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.footer-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 220px;
+  transition: transform 0.3s ease, background 0.3s ease;
+  word-break: break-word;
+}
+
+.footer-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.footer-card.email-card {
+  width: 260px;
+}
+
+
+.footer-card .icon-wrapper {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: rgba(242, 190, 66, 0.2);
+  color: #F2BE42;
+}
+
+.footer-card h4 {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.footer-card p a {
+  color: #ffffff;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.footer-card p a:hover {
+  color: #F2BE42;
+}
+
+
+.footer-social {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.footer-social a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255,255,255,0.1);
+  color: #ffffff;
+  transition: all 0.3s ease;
+}
+.footer-social a:hover {
+  background: rgba(242, 190, 66, 0.3);
+  color: #F2BE42;
+  transform: translateY(-3px);
+}
+
+/
+.footer-bottom {
+  font-size: 0.875rem;
+  color: rgba(255,255,255,0.7);
+  line-height: 1.4;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255,255,255,0.15);
+  max-width: 90%;
+  margin: 0 auto;
+}
+
+
+@media (max-width: 1024px) {
+  .footer {
+    padding: 2.5rem 1.5rem;
+  }
+  .footer-card {
+    width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer {
+    padding: 2rem 1rem 1.5rem;
+  }
+
+  .footer-cards {
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .footer-card {
+    width: 100%;
+    max-width: 360px;
+    padding: 1.2rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .footer-card .icon-wrapper {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 0.8rem;
+  }
+
+  .footer-card h4 {
+    font-size: 1rem;
+  }
+
+  .footer-card p {
+    font-size: 0.9rem;
+  }
+
+  .footer-social {
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .footer-social a {
+    width: 42px;
+    height: 42px;
+  }
+
+  .footer-bottom {
+    font-size: 0.8rem;
+    max-width: 95%;
+    padding-top: 1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .footer-card {
+    max-width: 90%;
+    padding: 1rem;
+  }
+  .footer-social a {
+    width: 40px;
+    height: 40px;
+  }
+}*/
+
+.footer {
+  background: linear-gradient(90deg, var(--ht-secondary), var(--ht-primary));
+  color: #ffffff;
+  padding: 3rem 1rem;
+  font-family: "Segoe UI", Arial, sans-serif;
+}
+
+.footer-container {
+  max-width: 1200px;
+  margin: 0 auto;
+  text-align: center;
+}
+
+.footer-cards {
+  display: flex;
+  justify-content: center;
+  flex-wrap: wrap;
+  gap: 2rem;
+  margin-bottom: 2rem;
+}
+
+.footer-card {
+  background: rgba(255, 255, 255, 0.05);
+  border: 1px solid rgba(255, 255, 255, 0.2);
+  border-radius: 12px;
+  padding: 1.5rem;
+  width: 220px;
+  transition: transform 0.3s ease, background 0.3s ease;
+  word-break: break-word;
+}
+
+.footer-card:hover {
+  transform: translateY(-5px);
+  background: rgba(255, 255, 255, 0.1);
+}
+
+.footer-card.email-card {
+  width: 260px;
+}
+
+.footer-card .icon-wrapper {
+  width: 50px;
+  height: 50px;
+  margin: 0 auto 1rem;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--ht-accent) 20%, transparent);
+  color: var(--ht-accent);
+}
+
+.footer-card h4 {
+  margin-bottom: 0.5rem;
+  font-size: 1.1rem;
+  font-weight: 600;
+  color: #ffffff;
+}
+
+.footer-card p a {
+  color: #ffffff;
+  text-decoration: underline;
+  transition: color 0.2s ease;
+}
+
+.footer-card p a:hover {
+  color: var(--ht-accent);
+}
+
+.footer-social {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin-bottom: 2rem;
+  flex-wrap: wrap;
+}
+
+.footer-social a {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.1);
+  color: #ffffff;
+  transition: all 0.3s ease;
+}
+
+.footer-social a:hover {
+  background: color-mix(in srgb, var(--ht-accent) 30%, transparent);
+  color: var(--ht-accent);
+  transform: translateY(-3px);
+}
+
+.footer-bottom {
+  font-size: 0.875rem;
+  color: rgba(255, 255, 255, 0.7);
+  line-height: 1.4;
+  padding-top: 1rem;
+  border-top: 1px solid rgba(255, 255, 255, 0.15);
+  max-width: 90%;
+  margin: 0 auto;
+}
+
+@media (max-width: 1024px) {
+  .footer {
+    padding: 2.5rem 1.5rem;
+  }
+  .footer-card {
+    width: 200px;
+  }
+}
+
+@media (max-width: 768px) {
+  .footer {
+    padding: 2rem 1rem 1.5rem;
+  }
+
+  .footer-cards {
+    flex-direction: column;
+    align-items: center;
+    gap: 1.25rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .footer-card {
+    width: 100%;
+    max-width: 360px;
+    padding: 1.2rem;
+    border-radius: 10px;
+    background: rgba(255, 255, 255, 0.08);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  }
+
+  .footer-card .icon-wrapper {
+    width: 46px;
+    height: 46px;
+    margin-bottom: 0.8rem;
+  }
+
+  .footer-card h4 {
+    font-size: 1rem;
+  }
+
+  .footer-card p {
+    font-size: 0.9rem;
+  }
+
+  .footer-social {
+    gap: 1rem;
+    margin-top: 1.5rem;
+  }
+
+  .footer-social a {
+    width: 42px;
+    height: 42px;
+  }
+
+  .footer-bottom {
+    font-size: 0.8rem;
+    max-width: 95%;
+    padding-top: 1rem;
+  }
+}
+
+@media (max-width: 420px) {
+  .footer-card {
+    max-width: 90%;
+    padding: 1rem;
+  }
+  .footer-social a {
+    width: 40px;
+    height: 40px;
+  }
+}

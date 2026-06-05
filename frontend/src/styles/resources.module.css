@@ -1,0 +1,586 @@
+:root {
+  --primary-blue: #133a74;
+  --dark-blue: #0f2d5c;
+  --light-blue: #e6eef8;
+  --lighter-blue: #f5f8fc;
+  --gold: #f2be42;
+  --text-dark: #183153;
+  --text-light: #61748d;
+  --bg-page: #f6f8fc;
+  --white: #ffffff;
+  --shadow-sm: 0 6px 16px rgba(15, 45, 92, 0.06);
+  --shadow-md: 0 14px 28px rgba(15, 45, 92, 0.1);
+}
+
+.resourcesPage {
+  min-height: 100vh;
+  background:
+    radial-gradient(circle at top left, rgba(19, 58, 116, 0.05), transparent 28%),
+    radial-gradient(circle at top right, rgba(242, 190, 66, 0.08), transparent 26%),
+    var(--bg-page);
+}
+
+.resourcesContainer {
+  width: min(100% - 32px, 1480px);
+  margin: 0 auto;
+  padding: 40px 0 56px;
+  margin-top: 70px;
+}
+
+.backButton {
+  border: none;
+  background: var(--gold);
+  color: var(--dark-blue);
+  padding: 11px 18px;
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 0.92rem;
+  cursor: pointer;
+  transition: all 0.25s ease;
+  margin-bottom: 18px;
+  box-shadow: 0 8px 18px rgba(242, 190, 66, 0.22);
+}
+
+.backButton:hover {
+  background: #e7b335;
+  transform: translateY(-2px);
+}
+
+.resourcesHeader {
+  text-align: center;
+  margin-bottom: 22px;
+  padding: 34px 26px 30px;
+  background: linear-gradient(135deg, var(--primary-blue), var(--dark-blue));
+  border-radius: 24px;
+  color: #fff;
+  box-shadow: var(--shadow-md);
+}
+
+.headerBadge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.14);
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  color: #fff;
+  padding: 7px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  margin-bottom: 14px;
+}
+
+.resourcesHeader h1 {
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  margin: 0 0 10px;
+  line-height: 1.1;
+}
+
+.resourcesHeader p {
+  font-size: clamp(14px, 1.8vw, 17px);
+  opacity: 0.95;
+  max-width: 700px;
+  margin: 0 auto;
+  line-height: 1.7;
+}
+
+.resourceTopBar {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 18px;
+  margin-bottom: 20px;
+  background: var(--white);
+  border: 1px solid var(--light-blue);
+  border-radius: 18px;
+  padding: 18px 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.resourceSearch {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 0 0 330px;
+  max-width: 330px;
+  background: var(--lighter-blue);
+  border: 1.5px solid var(--light-blue);
+  border-radius: 12px;
+  padding: 0 14px;
+}
+
+.searchIcon {
+  font-size: 14px;
+  opacity: 0.6;
+}
+
+.resourceSearchInput {
+  width: 100%;
+  padding: 12px 0;
+  border: none;
+  background: transparent;
+  font-size: 0.95rem;
+  color: var(--text-dark);
+  outline: none;
+}
+
+.resourceSearch:focus-within {
+  border-color: var(--primary-blue);
+  box-shadow: 0 0 0 3px rgba(19, 58, 116, 0.08);
+}
+
+.resourceFilters {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  justify-content: flex-end;
+  flex: 1;
+}
+
+.filterChip {
+  padding: 8px 16px;
+  border: 1.5px solid var(--light-blue);
+  background: #fff;
+  color: var(--primary-blue);
+  border-radius: 12px;
+  font-weight: 700;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.filterChip:hover {
+  border-color: var(--primary-blue);
+  background: #eef4fb;
+}
+
+.filterChipActive {
+  background: var(--gold);
+  color: var(--dark-blue);
+  border-color: var(--gold);
+}
+
+.resourceTable {
+  width: 100%;
+  display: grid;
+  gap: 10px;
+  background: var(--white);
+  border: 1px solid var(--light-blue);
+  border-radius: 20px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+}
+
+.resourceTableHeader {
+  display: grid;
+  grid-template-columns: 84px minmax(260px, 1fr) 110px 100px 190px;
+  padding: 10px 14px;
+  border-radius: 12px;
+  background: var(--lighter-blue);
+  font-weight: 800;
+  font-size: 12px;
+  color: var(--primary-blue);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  align-items: center;
+}
+
+.resourceTableRow {
+  display: grid;
+  grid-template-columns: 84px minmax(260px, 1fr) 110px 100px 190px;
+  background: #fff;
+  border: 1px solid var(--light-blue);
+  border-radius: 16px;
+  padding: 12px 14px;
+  align-items: center;
+  transition: all 0.2s ease;
+  column-gap: 10px;
+}
+
+.resourceTableRow:hover {
+  transform: translateY(-2px);
+  box-shadow: var(--shadow-sm);
+  border-color: #c9d8eb;
+}
+
+.resourceTableCell {
+  display: flex;
+  align-items: center;
+  color: var(--text-dark);
+  font-size: 14px;
+  min-width: 0;
+}
+
+.resourceTextBlock {
+  min-width: 0;
+}
+
+.resourceTitle {
+  font-weight: 800;
+  color: var(--dark-blue);
+  font-size: 15px;
+  margin-bottom: 4px;
+  line-height: 1.35;
+}
+
+.resourceDesc {
+  font-size: 13px;
+  color: var(--text-light);
+  line-height: 1.55;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.categoryBadge,
+.cardCategory {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 5px 11px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  white-space: nowrap;
+}
+
+.catScripture {
+  background: #e8f0fb;
+  color: #133a74;
+}
+
+.catBulletins {
+  background: #fff4d6;
+  color: #9a6600;
+}
+
+.catBooks {
+  background: #e6f7ee;
+  color: #1a6e3c;
+}
+
+.catLearning {
+  background: #eef0fb;
+  color: #3a3a9a;
+}
+
+.catForms {
+  background: #fdecea;
+  color: #9a1a1a;
+}
+
+.thumbnail {
+  width: 54px;
+  height: 68px;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid var(--light-blue);
+  background: #f2f4f8;
+  display: block;
+}
+
+/* PDF icon */
+.pdfIconWrap {
+  width: 54px;
+  height: 68px;
+  flex: 0 0 auto;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.pdfIconSvg {
+  width: 100%;
+  height: 100%;
+  display: block;
+}
+
+.pdfIconSvg path:first-of-type {
+  fill: #ee1c25;
+}
+
+.pdfFold {
+  fill: #f68a8f;
+}
+
+.pdfIconSvg text {
+  fill: #ffffff;
+  font-size: 14px;
+  font-weight: 900;
+  font-family: Arial, sans-serif;
+  letter-spacing: 0.02em;
+}
+
+.resourceActions,
+.resourceCardActions {
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: nowrap;
+}
+
+.viewButton,
+.downloadButton {
+  min-width: 88px;
+  padding: 9px 14px;
+  border-radius: 10px;
+  font-weight: 700;
+  text-decoration: none;
+  font-size: 13px;
+  transition: all 0.2s ease;
+  border: none;
+  cursor: pointer;
+  text-align: center;
+  box-sizing: border-box;
+}
+
+.viewButton {
+  background: var(--lighter-blue);
+  color: var(--primary-blue);
+  border: 1.5px solid var(--light-blue);
+}
+
+.viewButton:hover {
+  background: #eaf1fa;
+  border-color: var(--primary-blue);
+}
+
+.downloadButton {
+  background: var(--dark-blue);
+  color: #fff;
+}
+
+.downloadButton:hover {
+  background: var(--primary-blue);
+}
+
+.emptyState {
+  text-align: center;
+  padding: 40px 20px;
+  color: var(--text-light);
+  font-size: 15px;
+}
+
+.mobileCards {
+  display: none;
+}
+
+.resourceCard {
+  background: #fff;
+  border: 1px solid var(--light-blue);
+  border-radius: 18px;
+  padding: 16px;
+  box-shadow: var(--shadow-sm);
+  margin-bottom: 14px;
+}
+
+.resourceCardHeader {
+  display: flex;
+  gap: 14px;
+  align-items: flex-start;
+}
+
+.mobileCardText {
+  min-width: 0;
+}
+
+.mobileCardText h3 {
+  margin: 0 0 6px;
+  color: var(--dark-blue);
+  font-size: 1rem;
+  line-height: 1.35;
+}
+
+.resourceCardBody {
+  margin: 14px 0 12px;
+  color: var(--text-light);
+  line-height: 1.65;
+  font-size: 14px;
+}
+
+.resourceCardFooter {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+}
+
+.mobileDate {
+  color: var(--text-light);
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.paginationWrapper {
+  margin-top: 24px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.pagination {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 10px;
+}
+
+.paginationButton,
+.paginationStatus {
+  width: 124px;
+  min-width: 124px;
+  max-width: 124px;
+  height: 46px;
+  min-height: 46px;
+  max-height: 46px;
+  padding: 0 14px;
+  margin: 0;
+  border-radius: 14px;
+  border: 1.5px solid #cfdae8;
+  background: #fff;
+  font-weight: 700;
+  font-size: 14px;
+  line-height: 1;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  box-sizing: border-box;
+  white-space: nowrap;
+  vertical-align: middle;
+}
+
+.paginationButton {
+  color: var(--primary-blue);
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.paginationButton:hover:not(:disabled) {
+  background: #eef4fb;
+  border-color: var(--primary-blue);
+}
+
+.paginationButton:disabled {
+  background: #f8fbff;
+  border-color: #dbe4f0;
+  color: #98a9be;
+  opacity: 1;
+  cursor: not-allowed;
+}
+
+.paginationStatus {
+  color: var(--primary-blue);
+  gap: 4px;
+}
+
+.paginationLabel,
+.paginationDivider {
+  color: var(--text-light);
+  font-weight: 600;
+}
+
+.paginationCurrent,
+.paginationTotal {
+  color: var(--dark-blue);
+  font-weight: 800;
+}
+
+@media (max-width: 1100px) {
+  .resourceTableHeader,
+  .resourceTableRow {
+    grid-template-columns: 84px minmax(220px, 1fr) 100px 95px 180px;
+  }
+}
+
+@media (max-width: 980px) {
+  .resourceTable {
+    display: none;
+  }
+
+  .mobileCards {
+    display: block;
+  }
+}
+
+@media (max-width: 768px) {
+  .resourcesContainer {
+    width: calc(100% - 24px);
+    padding: 28px 0 40px;
+    margin-top: 60px;
+  }
+
+  .backButton {
+    width: 100%;
+    margin-bottom: 14px;
+  }
+
+  .resourcesHeader {
+    padding: 24px 18px;
+    border-radius: 18px;
+  }
+
+  .resourceTopBar {
+    flex-direction: column;
+    align-items: stretch;
+    gap: 12px;
+    border-radius: 16px;
+  }
+
+  .resourceSearch {
+    max-width: 100%;
+    flex: 1 1 auto;
+  }
+
+  .resourceFilters {
+    justify-content: center;
+  }
+
+  .resourceCardFooter {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .resourceCardActions {
+    width: 100%;
+    flex-wrap: nowrap;
+  }
+
+  .viewButton,
+  .downloadButton {
+    flex: 1;
+  }
+
+  .pagination {
+    flex-direction: column;
+    width: 100%;
+  }
+
+  .paginationButton,
+  .paginationStatus {
+    width: 100%;
+    max-width: 260px;
+  }
+}
+
+@media (max-width: 520px) {
+  .filterChip {
+    font-size: 12px;
+    padding: 8px 12px;
+  }
+
+  .headerBadge {
+    font-size: 11px;
+  }
+
+  .resourcesHeader h1 {
+    font-size: 2rem;
+  }
+
+  .mobileCardText h3 {
+    font-size: 0.96rem;
+  }
+}

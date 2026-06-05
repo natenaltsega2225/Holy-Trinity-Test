@@ -1,0 +1,505 @@
+/* =frontend\src\styles\checkout.css================= Tokens ================== */
+/* src/styles/checkout.css */
+
+/* =========================================================
+   CHECKOUT PAGE (ENTERPRISE UI)
+========================================================= */
+/* =========================================================
+   CHECKOUT PAGE — ENTERPRISE UI
+   frontend/src/styles/checkout.css
+========================================================= */
+
+:root {
+  --ck-bg: #f4f7fb;
+  --ck-card: #ffffff;
+  --ck-border: #e2e8f0;
+  --ck-text: #0f172a;
+  --ck-muted: #64748b;
+
+  --ck-primary: #0f4db8;
+  --ck-primary-hover: #0b3d94;
+
+  --ck-gold: #f2be42;
+
+  --ck-radius-xl: 26px;
+  --ck-radius-lg: 18px;
+  --ck-radius-md: 14px;
+
+  --ck-shadow-sm: 0 6px 18px rgba(15, 23, 42, 0.05);
+  --ck-shadow-md: 0 18px 40px rgba(15, 23, 42, 0.08);
+  --ck-shadow-lg: 0 30px 80px rgba(15, 23, 42, 0.14);
+}
+
+/* =========================================================
+   PAGE
+========================================================= */
+
+.ck-page {
+  min-height: 100vh;
+
+  padding: 42px;
+
+  background:
+    linear-gradient(
+      to bottom,
+      #f8fbff 0%,
+      #f3f6fb 100%
+    );
+
+  color: var(--ck-text);
+}
+
+.ck-page h1 {
+  margin: 0 0 26px;
+
+  font-size: 42px;
+  line-height: 1.05;
+  font-weight: 900;
+
+  letter-spacing: -0.02em;
+
+  color: var(--ck-text);
+}
+
+/* =========================================================
+   TABS
+========================================================= */
+
+.ck-tabs {
+  display: flex;
+  flex-wrap: wrap;
+
+  gap: 12px;
+
+  margin-bottom: 28px;
+}
+
+.ck-tabs button {
+  height: 48px;
+
+  padding: 0 20px;
+
+  border: 1px solid var(--ck-border);
+  border-radius: 999px;
+
+  background: #ffffff;
+
+  font-size: 14px;
+  font-weight: 800;
+
+  color: #334155;
+
+  cursor: pointer;
+
+  transition:
+    background 0.18s ease,
+    border-color 0.18s ease,
+    color 0.18s ease,
+    transform 0.18s ease;
+}
+
+.ck-tabs button:hover {
+  transform: translateY(-1px);
+
+  border-color: #bfd0ea;
+
+  background: #f8fbff;
+}
+
+.ck-tabs button:focus {
+  outline: none;
+}
+
+/* =========================================================
+   LAYOUT
+========================================================= */
+
+.ck-layout {
+  display: grid;
+
+  grid-template-columns: minmax(0, 1.8fr) 380px;
+
+  gap: 24px;
+
+  align-items: start;
+}
+
+/* =========================================================
+   CARDS
+========================================================= */
+
+.ck-left,
+.ck-right {
+  background: var(--ck-card);
+
+  border: 1px solid var(--ck-border);
+
+  border-radius: var(--ck-radius-xl);
+
+  box-shadow: var(--ck-shadow-md);
+}
+
+/* =========================================================
+   LEFT PANEL
+========================================================= */
+
+.ck-left {
+  padding: 26px;
+}
+
+/* =========================================================
+   RIGHT SUMMARY
+========================================================= */
+
+.ck-right {
+  position: sticky;
+  top: 24px;
+
+  padding: 26px;
+}
+
+.ck-right h3 {
+  margin: 0 0 20px;
+
+  font-size: 24px;
+  font-weight: 900;
+
+  color: var(--ck-text);
+}
+
+/* =========================================================
+   PLAN CARDS
+========================================================= */
+
+.ck-plan-card {
+  border: 1px solid var(--ck-border);
+
+  border-radius: 18px;
+
+  padding: 18px;
+
+  background: #ffffff;
+
+  cursor: pointer;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.ck-plan-card + .ck-plan-card {
+  margin-top: 14px;
+}
+
+.ck-plan-card:hover {
+  border-color: #bfd0ea;
+
+  transform: translateY(-2px);
+
+  box-shadow: var(--ck-shadow-sm);
+}
+
+.ck-plan-card.active {
+  border-color: rgba(15, 77, 184, 0.4);
+
+  background:
+    linear-gradient(
+      180deg,
+      #eef5ff 0%,
+      #ffffff 100%
+    );
+
+  box-shadow:
+    0 0 0 4px rgba(15, 77, 184, 0.08);
+}
+
+.ck-plan-name {
+  font-size: 18px;
+  font-weight: 900;
+
+  margin-bottom: 8px;
+
+  color: var(--ck-text);
+}
+
+.ck-plan-price {
+  font-size: 28px;
+  font-weight: 900;
+
+  color: var(--ck-primary);
+}
+
+.ck-plan-meta {
+  margin-top: 10px;
+
+  font-size: 14px;
+  line-height: 1.6;
+
+  color: var(--ck-muted);
+}
+
+/* =========================================================
+   FORM ELEMENTS
+========================================================= */
+
+.ck-left select,
+.ck-left input {
+  width: 100%;
+
+  min-height: 54px;
+
+  border: 1px solid var(--ck-border);
+
+  border-radius: 16px;
+
+  background: #ffffff;
+
+  padding: 0 16px;
+
+  font-size: 15px;
+  font-weight: 500;
+
+  color: var(--ck-text);
+
+  outline: none;
+
+  transition:
+    border-color 0.18s ease,
+    box-shadow 0.18s ease,
+    transform 0.18s ease;
+}
+
+.ck-left select:hover,
+.ck-left input:hover {
+  border-color: #bfd0ea;
+}
+
+.ck-left select:focus,
+.ck-left input:focus {
+  border-color: #2563eb;
+
+  box-shadow:
+    0 0 0 4px rgba(37, 99, 235, 0.12);
+
+  transform: translateY(-1px);
+}
+
+/* =========================================================
+   DONATION
+========================================================= */
+
+.ck-donation-grid {
+  display: grid;
+  gap: 16px;
+}
+
+/* =========================================================
+   SUMMARY
+========================================================= */
+
+.ck-summary-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  padding: 14px 0;
+
+  border-bottom: 1px solid #eef2f7;
+}
+
+.ck-summary-row:last-child {
+  border-bottom: none;
+}
+
+.ck-summary-label {
+  font-size: 14px;
+  font-weight: 700;
+
+  color: var(--ck-muted);
+}
+
+.ck-summary-value {
+  font-size: 15px;
+  font-weight: 800;
+
+  color: var(--ck-text);
+}
+
+.ck-total {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+
+  margin-top: 24px;
+  padding-top: 24px;
+
+  border-top: 1px solid #e2e8f0;
+}
+
+.ck-total span {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.ck-total strong {
+  font-size: 34px;
+  font-weight: 900;
+
+  color: var(--ck-primary);
+}
+
+/* =========================================================
+   BUTTONS
+========================================================= */
+
+.ck-btn {
+  width: 100%;
+
+  min-height: 56px;
+
+  border: none;
+  border-radius: 18px;
+
+  margin-top: 24px;
+
+  background:
+    linear-gradient(
+      135deg,
+      #0f4db8 0%,
+      #2563eb 100%
+    );
+
+  color: #ffffff;
+
+  font-size: 16px;
+  font-weight: 900;
+
+  cursor: pointer;
+
+  transition:
+    transform 0.18s ease,
+    box-shadow 0.18s ease,
+    opacity 0.18s ease;
+
+  box-shadow:
+    0 18px 36px rgba(37, 99, 235, 0.24);
+}
+
+.ck-btn:hover {
+  transform: translateY(-2px);
+
+  box-shadow:
+    0 24px 48px rgba(37, 99, 235, 0.34);
+}
+
+.ck-btn:disabled {
+  opacity: 0.65;
+  cursor: not-allowed;
+  transform: none;
+}
+
+/* =========================================================
+   CHECKBOX
+========================================================= */
+
+.ck-check {
+  display: flex;
+  align-items: center;
+
+  gap: 10px;
+
+  margin-top: 18px;
+
+  font-size: 14px;
+  font-weight: 700;
+
+  color: #334155;
+}
+
+.ck-check input {
+  width: 18px;
+  height: 18px;
+
+  accent-color: var(--ck-primary);
+}
+
+/* =========================================================
+   LOADING
+========================================================= */
+
+.ck-loading {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  min-height: 60vh;
+
+  font-size: 18px;
+  font-weight: 800;
+
+  color: var(--ck-muted);
+}
+
+/* =========================================================
+   MOBILE
+========================================================= */
+
+@media (max-width: 1100px) {
+  .ck-layout {
+    grid-template-columns: 1fr;
+  }
+
+  .ck-right {
+    position: relative;
+    top: auto;
+  }
+}
+
+@media (max-width: 768px) {
+  .ck-page {
+    padding: 18px;
+  }
+
+  .ck-page h1 {
+    font-size: 32px;
+  }
+
+  .ck-left,
+  .ck-right {
+    padding: 18px;
+    border-radius: 22px;
+  }
+
+  .ck-tabs {
+    gap: 10px;
+  }
+
+  .ck-tabs button {
+    width: 100%;
+  }
+
+  .ck-plan-price {
+    font-size: 24px;
+  }
+
+  .ck-total strong {
+    font-size: 28px;
+  }
+}
+
+@media (max-width: 480px) {
+  .ck-page h1 {
+    font-size: 28px;
+  }
+
+  .ck-left,
+  .ck-right {
+    padding: 16px;
+  }
+
+  .ck-btn {
+    min-height: 52px;
+    font-size: 15px;
+  }
+}

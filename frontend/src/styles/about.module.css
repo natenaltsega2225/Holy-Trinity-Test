@@ -1,0 +1,136 @@
+/* =========================================
+   About Us Section (CSS Module - Clean + Professional)
+========================================= */
+
+/* Section wrapper */
+.aboutSection {
+  padding: 80px 0;
+  background: #ffffff;
+}
+
+/* Container */
+.aboutContainer {
+  max-width: 1200px;
+  margin: 0 auto;
+  padding: 0 24px;
+  text-align: center;
+}
+
+/* Title */
+.aboutTitle {
+  color: #234a88;
+  font-size: clamp(28px, 4vw, 44px);
+  font-weight: 800;
+  margin-bottom: 1rem;
+  letter-spacing: -0.02em;
+}
+
+/* Description */
+.aboutLead {
+  color: #4a5b77;
+  font-size: clamp(15px, 2vw, 18px);
+  line-height: 1.75;
+  max-width: 850px;
+  margin: 0 auto 2.5rem;
+}
+
+/* Grid layout */
+.aboutGrid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin-top: 2rem;
+}
+
+@media (min-width: 768px) {
+  .aboutGrid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+}
+
+@media (min-width: 1024px) {
+  .aboutGrid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* Card */
+.aboutCard {
+  background: #ffffff;
+  border-radius: 20px;
+  padding: 24px;
+  border: 1px solid rgba(35, 74, 136, 0.12);
+  box-shadow: 0 10px 24px rgba(15, 23, 42, 0.05);
+  transition: all 0.25s ease;
+  text-align: left;
+}
+
+.aboutCard:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 14px 32px rgba(15, 23, 42, 0.08);
+}
+
+/* Icon container (VERY IMPORTANT FIX) */
+.aboutIcon {
+  width: 52px;
+  height: 52px;
+  border-radius: 14px;
+  background: linear-gradient(180deg, #d8c27f 0%, #b89b56 100%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  margin-bottom: 14px;
+  box-shadow: 0 8px 18px rgba(184, 155, 86, 0.25);
+}
+
+/* Make lucide icons visible + centered */
+.aboutIcon svg {
+  width: 22px;
+  height: 22px;
+  stroke: #ffffff;
+}
+
+/* Title inside card */
+.aboutCardTitle {
+  font-size: 1.15rem;
+  font-weight: 700;
+  color: #1e3153;
+  margin-bottom: 8px;
+}
+
+/* Text inside card */
+.aboutCardText {
+  font-size: 0.95rem;
+  color: #4a5b77;
+  line-height: 1.7;
+}
+
+/* Actions */
+.aboutActions {
+  display: flex;
+  justify-content: center;
+  margin-top: 1.5rem;
+}
+
+/* Button */
+.aboutBtn {
+  display: inline-block;
+  background: linear-gradient(180deg, #d8c27f 0%, #b89b56 100%);
+  color: #1e1e1e;
+  font-weight: 700;
+  padding: 12px 22px;
+  border-radius: 14px;
+  box-shadow: 0 6px 16px rgba(184, 155, 86, 0.3);
+  transition: all 0.25s ease;
+  text-decoration: none;
+}
+
+.aboutBtn:hover {
+  transform: translateY(-2px);
+  filter: brightness(1.05);
+}
+
+/* CTA fix */
+.ctaInnerP {
+  color: #ffffff;
+}

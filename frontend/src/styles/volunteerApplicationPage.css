@@ -1,0 +1,275 @@
+/*frontend\src\styles\volunteerApplicationPage.css*/
+.vap-page {
+  min-height: 100vh;
+  background: #f5f8fc;
+  padding: 100px 20px 60px;
+}
+
+.vap-shell {
+  max-width: 900px;
+  margin: 0 auto;
+}
+
+.vap-hero {
+  margin-bottom: 18px;
+}
+
+.vap-eyebrow {
+  margin: 0 0 8px;
+  color: #b8871b;
+  font-size: 12px;
+  font-weight: 800;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+
+.vap-title {
+  margin: 0;
+  color: #163760;
+  font-size: clamp(30px, 4vw, 42px);
+  font-weight: 800;
+  line-height: 1.1;
+}
+
+.vap-subtitle {
+  margin: 10px 0 0;
+  color: #52627a;
+  font-size: 15px;
+  line-height: 1.7;
+  max-width: 720px;
+}
+
+.vap-card {
+  background: #fff;
+  border: 1px solid #dde6f2;
+  border-radius: 22px;
+  box-shadow: 0 10px 26px rgba(15, 45, 92, 0.08);
+  padding: 24px;
+  margin-bottom: 18px;
+}
+
+.vap-card--context {
+  padding: 20px;
+}
+
+.vap-context-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+}
+
+.vap-context-item {
+  background: #f7fafe;
+  border: 1px solid #dce6f5;
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.vap-context-item--full {
+  grid-column: 1 / -1;
+}
+
+.vap-context-item span {
+  color: #5d6d86;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.vap-context-item strong {
+  color: #163760;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+.vap-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 16px;
+}
+
+.vap-full {
+  grid-column: 1 / -1;
+}
+
+.vap-card label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.vap-card label span {
+  color: #4d607d;
+  font-size: 13px;
+  font-weight: 800;
+}
+
+.vap-card input,
+.vap-card textarea {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d4ddeb;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #17365f;
+  background: #fff;
+  outline: none;
+}
+
+.vap-card input:focus,
+.vap-card textarea:focus {
+  border-color: #2a64aa;
+  box-shadow: 0 0 0 4px rgba(42, 100, 170, 0.12);
+}
+
+.vap-alert {
+  margin-bottom: 16px;
+  border-radius: 14px;
+  padding: 14px 16px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.vap-alert--success {
+  background: #eaf8ef;
+  color: #1d6b3a;
+  border: 1px solid #cfe9d8;
+}
+
+.vap-alert--error {
+  background: #fdeeee;
+  color: #aa2d2d;
+  border: 1px solid #f3cccc;
+}
+
+.vap-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  margin-top: 20px;
+}
+
+.vap-btn {
+  min-height: 46px;
+  padding: 0 18px;
+  border: none;
+  border-radius: 14px;
+  font-weight: 800;
+  cursor: pointer;
+  transition: 0.2s ease;
+}
+
+.vap-btn--ghost {
+  background: #edf3fa;
+  color: #17365f;
+}
+
+.vap-btn--primary {
+  background: #133a74;
+  color: #fff;
+}
+
+.vap-btn:hover {
+  transform: translateY(-1px);
+}
+.vap-card select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d4ddeb;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #17365f;
+  background: #fff;
+  outline: none;
+}
+
+.vap-card select:focus {
+  border-color: #2a64aa;
+  box-shadow: 0 0 0 4px rgba(42, 100, 170, 0.12);
+}
+.vap-card select {
+  width: 100%;
+  box-sizing: border-box;
+  border: 1px solid #d4ddeb;
+  border-radius: 14px;
+  padding: 12px 14px;
+  font-size: 14px;
+  color: #17365f;
+  background: #fff;
+  outline: none;
+}
+
+.vap-card select:focus {
+  border-color: #2a64aa;
+  box-shadow: 0 0 0 4px rgba(42, 100, 170, 0.12);
+}
+
+.vap-modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(11, 26, 52, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  z-index: 2000;
+}
+
+.vap-modal-shell {
+  width: min(920px, 100%);
+  max-height: calc(100vh - 48px);
+  overflow: auto;
+  border-radius: 24px;
+}
+
+.vap-modal-header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.vap-modal-close {
+  width: 42px;
+  height: 42px;
+  border-radius: 12px;
+  border: none;
+  background: #edf3fa;
+  color: #17365f;
+  font-size: 18px;
+  cursor: pointer;
+  flex: 0 0 auto;
+}
+
+.vap-title--modal {
+  font-size: clamp(28px, 4vw, 38px);
+}
+
+.vap-subtitle--modal {
+  max-width: 640px;
+}
+@media (max-width: 720px) {
+  .vap-grid,
+  .vap-context-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .vap-context-item--full {
+    grid-column: auto;
+  }
+
+  .vap-actions {
+    flex-direction: column;
+  }
+
+  .vap-btn {
+    width: 100%;
+  }
+}

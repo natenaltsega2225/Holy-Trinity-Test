@@ -1,0 +1,393 @@
+/*frontend\src\styles\FormsPage.css
+*/
+
+.forms-page {
+  background: #f4f7fb;
+  min-height: 100vh;
+  padding: 22px 0 50px;
+}
+
+.forms-page-wrapper {
+  max-width: 1320px;
+  margin: 0 auto;
+  padding: 0 16px;
+}
+
+.forms-page-hero {
+  background: #123d7a;
+  color: #fff;
+  border-radius: 24px;
+  padding: 24px 24px 28px;
+  margin-bottom: 18px;
+}
+
+.forms-page-badge {
+  display: inline-block;
+  background: rgba(255, 255, 255, 0.12);
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  padding: 8px 14px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  margin-bottom: 12px;
+}
+
+.forms-page-title {
+  font-size: clamp(30px, 4vw, 52px);
+  line-height: 1.05;
+  margin: 0 0 10px;
+  font-weight: 800;
+}
+
+.forms-page-subtitle {
+  margin: 0;
+  font-size: 17px;
+  opacity: 0.95;
+}
+
+.forms-toolbar {
+  display: flex;
+  justify-content: space-between;
+  gap: 16px;
+  align-items: flex-start;
+  background: #fff;
+  border: 1px solid #dbe4f0;
+  border-radius: 22px;
+  padding: 16px;
+  margin-bottom: 16px;
+  flex-wrap: wrap;
+}
+
+.forms-search-wrap {
+  position: relative;
+  flex: 1 1 380px;
+  min-width: 260px;
+}
+
+.forms-search {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  background: #f7f9fc;
+  border: 1px solid #d2ddeb;
+  border-radius: 16px;
+  padding: 0 14px;
+  height: 50px;
+}
+
+.forms-search input {
+  border: 0;
+  background: transparent;
+  outline: none;
+  width: 100%;
+  font-size: 15px;
+}
+
+.forms-search-dropdown {
+  position: absolute;
+  top: calc(100% + 8px);
+  left: 0;
+  right: 0;
+  background: #fff;
+  border: 1px solid #dbe4f0;
+  border-radius: 16px;
+  overflow: hidden;
+  box-shadow: 0 16px 36px rgba(16, 42, 86, 0.12);
+  z-index: 5;
+}
+
+.forms-search-result {
+  width: 100%;
+  text-align: left;
+  background: #fff;
+  border: 0;
+  padding: 12px 14px;
+  display: flex;
+  justify-content: space-between;
+  cursor: pointer;
+}
+
+.forms-search-result:hover {
+  background: #f7f9fc;
+}
+
+.forms-search-result-title {
+  font-weight: 700;
+  color: #123d7a;
+}
+
+.forms-search-result-category {
+  color: #6b7a90;
+  font-size: 13px;
+}
+
+.forms-filters {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+
+.forms-filter-chip {
+  height: 44px;
+  padding: 0 18px;
+  border-radius: 14px;
+  border: 1px solid #c9d5e6;
+  background: #fff;
+  color: #0f2d5c;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.forms-filter-chip-active {
+  background: #f2be42;
+  border-color: #f2be42;
+}
+
+.forms-button-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin-bottom: 22px;
+}
+
+.forms-open-button {
+  background: #fff;
+  border: 1px solid #c9d5e6;
+  color: #0f2d5c;
+  border-radius: 14px;
+  min-height: 44px;
+  padding: 0 16px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.forms-open-button-active {
+  background: #123d7a;
+  color: #fff;
+  border-color: #123d7a;
+}
+
+.forms-empty-state {
+  padding: 24px;
+  background: #fff;
+  border: 1px solid #dbe4f0;
+  border-radius: 18px;
+  color: #6a7a90;
+}
+
+.selected-form-shell {
+  background: #fff;
+  border: 1px solid #dbe4f0;
+  border-radius: 22px;
+  padding: 18px;
+}
+
+.selected-form-header {
+  margin-bottom: 16px;
+}
+
+.selected-form-close {
+  background: #123d7a;
+  color: #fff;
+  border: 0;
+  border-radius: 12px;
+  padding: 9px 16px;
+  font-weight: 700;
+  cursor: pointer;
+  margin-bottom: 14px;
+}
+
+.selected-form-category {
+  display: inline-block;
+  padding: 6px 12px;
+  border-radius: 999px;
+  background: #eef3fb;
+  color: #123d7a;
+  font-size: 12px;
+  font-weight: 800;
+  margin-bottom: 10px;
+}
+
+.selected-form-header h2 {
+  margin: 0 0 8px;
+  font-size: clamp(26px, 3vw, 40px);
+  color: #123d7a;
+}
+
+.selected-form-header p {
+  margin: 0;
+  color: #5b6f8c;
+  font-size: 16px;
+}
+
+.church-form {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px 16px;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  min-width: 0;
+}
+
+.form-group.full-width {
+  grid-column: 1 / -1;
+}
+
+.form-group label {
+  font-size: 13px;
+  font-weight: 800;
+  color: #24456f;
+}
+
+.form-group input,
+.form-group select,
+.form-group textarea {
+  width: 100%;
+  max-width: 100%;
+  border: 1px solid #cbd7e8;
+  border-radius: 14px;
+  background: #fff;
+  padding: 11px 12px;
+  font-size: 14px;
+  outline: none;
+  box-sizing: border-box;
+}
+
+.form-group textarea {
+  min-height: 110px;
+  resize: vertical;
+}
+
+.form-group input:focus,
+.form-group select:focus,
+.form-group textarea:focus {
+  border-color: #123d7a;
+  box-shadow: 0 0 0 3px rgba(18, 61, 122, 0.08);
+}
+
+.field-error {
+  color: #c62828;
+  font-size: 12px;
+  font-weight: 700;
+}
+
+.form-alert {
+  grid-column: 1 / -1;
+  border-radius: 14px;
+  padding: 13px 15px;
+  font-size: 14px;
+  font-weight: 700;
+}
+
+.form-alert-success {
+  background: #edf8ef;
+  color: #1d6b2a;
+  border: 1px solid #bfe0c7;
+}
+
+.form-alert-error {
+  background: #fff1f1;
+  color: #b3261e;
+  border: 1px solid #efc1bf;
+}
+
+.church-form-actions {
+  grid-column: 1 / -1;
+  display: flex;
+  justify-content: flex-end;
+  margin-top: 4px;
+}
+
+.church-form-actions button {
+  min-width: 170px;
+  height: 46px;
+  border-radius: 14px;
+  border: 0;
+  background: #f2be42;
+  color: #0f2d5c;
+  font-weight: 800;
+  cursor: pointer;
+}
+.forms-volunteer-context {
+  grid-column: 1 / -1;
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-bottom: 8px;
+}
+
+.forms-volunteer-context-item {
+  background: #f7fafe;
+  border: 1px solid #dce6f5;
+  border-radius: 14px;
+  padding: 14px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.forms-volunteer-context-item--full {
+  grid-column: 1 / -1;
+}
+
+.forms-volunteer-context-item span {
+  color: #5d6d86;
+  font-size: 12px;
+  font-weight: 800;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+}
+
+.forms-volunteer-context-item strong {
+  color: #163760;
+  font-size: 15px;
+  line-height: 1.5;
+}
+
+@media (max-width: 720px) {
+  .forms-volunteer-context {
+    grid-template-columns: 1fr;
+  }
+
+  .forms-volunteer-context-item--full {
+    grid-column: auto;
+  }
+}
+@media (max-width: 900px) {
+  .church-form {
+    grid-template-columns: 1fr;
+  }
+}
+
+@media (max-width: 640px) {
+  .forms-page-wrapper {
+    padding: 0 12px;
+  }
+
+  .forms-page-hero {
+    padding: 20px 16px 22px;
+    border-radius: 20px;
+  }
+
+  .forms-toolbar {
+    padding: 14px;
+    border-radius: 18px;
+  }
+
+  .forms-open-button {
+    width: 100%;
+  }
+
+  .selected-form-shell {
+    padding: 15px;
+    border-radius: 18px;
+  }
+
+  .forms-page-subtitle {
+    font-size: 15px;
+  }
+}

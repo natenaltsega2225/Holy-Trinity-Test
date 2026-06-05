@@ -1,0 +1,24 @@
+/* src/styles/GoogleMap.css */
+.map-section {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+}
+
+.map-container {
+  width: 100%;
+  margin: 0;
+  padding: 0;
+  border-radius: 0;             
+  overflow: hidden;
+  box-shadow: none;              
+}
+
+
+.map-iframe {
+  display: block;
+  width: 100%;
+  height: clamp(200px, 36vh, 340px);   
+  border: 0;
+}
+  

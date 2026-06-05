@@ -1,0 +1,53 @@
+/*frontend\src\styles\Reconciliation-dashboard.css*/
+.recon-page {
+  padding: 20px;
+}
+
+.recon-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 16px;
+}
+
+.recon-card {
+  background: #fff;
+  padding: 18px;
+  border-radius: 14px;
+  box-shadow: 0 10px 25px rgba(0,0,0,0.05);
+}
+
+.recon-table {
+  width: 100%;
+  margin-top: 20px;
+  border-collapse: collapse;
+}
+
+.recon-table th,
+.recon-table td {
+  padding: 10px;
+  border-bottom: 1px solid #eee;
+}
+
+.recon-actions {
+  margin: 10px 0;
+}
+
+.recon-modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0,0,0,0.4);
+}
+
+.recon-modal-box {
+  background: white;
+  width: 60%;
+  margin: 5% auto;
+  padding: 20px;
+  border-radius: 12px;
+}
+
+.compare-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 15px;
+}

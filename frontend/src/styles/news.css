@@ -1,0 +1,240 @@
+/*frontend\src\styles\news.css*/
+:root {
+  --nv-blue-900: #0f2d5c;
+  --nv-blue-800: #133a74;
+  --nv-blue-700: #1f4f96;
+  --nv-gold: #f2be42;
+  --nv-ink: #142033;
+  --nv-text: #516382;
+  --nv-muted: #5d6a82;
+  --nv-ring: #e7eef6;
+  --nv-bg-soft: #f7fafd;
+  --nv-white: #ffffff;
+  --nv-shadow-sm: 0 6px 18px rgba(0, 0, 0, 0.05);
+  --nv-shadow-md: 0 12px 28px rgba(0, 0, 0, 0.08);
+}
+
+.nv-wrap {
+  padding: 88px 0;
+  background: linear-gradient(180deg, #ffffff 0%, #f9fbfe 100%);
+}
+
+.nv-container {
+  width: 100%;
+  max-width: 1280px;
+  margin: 0 auto;
+  padding: 0 24px;
+  box-sizing: border-box;
+}
+
+/* Header */
+.nv-pillbar {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 16px;
+}
+
+.nv-pill {
+   margin: 0 0 8px;
+  color: var(--min-blue-700);
+font-size: clamp(26px, 4.2vw, 42px);
+  font-weight: 800;
+
+  text-transform: uppercase;
+  line-height: 1.1;
+}
+
+/* Grid */
+.nv-grid {
+  display: grid;
+  grid-template-columns: 1fr;
+  gap: 24px;
+  margin-top: 40px;
+}
+
+/* Card */
+.nv-card {
+  background: var(--nv-white);
+  border-radius: 20px;
+  padding: 32px 28px;
+  text-decoration: none;
+  color: inherit;
+  box-shadow: var(--nv-shadow-sm);
+  border: 1px solid var(--nv-ring);
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  text-align: left;
+  min-height: 260px;
+  width: 100%;
+  box-sizing: border-box;
+  transition:
+    transform 0.25s ease,
+    box-shadow 0.25s ease,
+    border-color 0.25s ease,
+    background 0.25s ease;
+}
+
+/* Button cards */
+.nv-card-button {
+  width: 100%;
+  border: 1px solid var(--nv-ring);
+  background: #fff;
+  text-align: left;
+  cursor: pointer;
+  font: inherit;
+  appearance: none;
+}
+
+.nv-card:hover,
+.nv-card-button:hover {
+  transform: translateY(-6px);
+  box-shadow: var(--nv-shadow-md);
+  border-color: #dbe6f6;
+  background: #fff;
+  color: inherit;
+}
+
+.nv-card-button:focus,
+.nv-card-button:focus-visible,
+.nv-card-button:active {
+  background: #fff;
+  color: inherit;
+  outline: 3px solid rgba(242, 190, 66, 0.35);
+  outline-offset: 2px;
+}
+
+.nv-card-kicker {
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--nv-muted);
+  margin-bottom: 8px;
+  font-weight: 700;
+}
+
+.nv-card-title {
+  font-size: clamp(22px, 2.2vw, 28px);
+  font-weight: 800;
+  margin: 0 0 14px;
+  color: var(--nv-blue-800);
+  line-height: 1.2;
+}
+
+.nv-card-text {
+  font-size: clamp(15px, 1.8vw, 17px);
+  color: var(--nv-text);
+  line-height: 1.7;
+  margin: 0;
+  flex-grow: 1;
+}
+
+.nv-card-icon {
+  margin-bottom: 20px;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+}
+
+/* CTA Buttons */
+.nv-btn {
+  display: inline-block;
+  padding: 10px 14px;
+  border-radius: 12px;
+  font-weight: 800;
+  transition: 0.18s ease;
+  text-decoration: none;
+  margin-top: 20px;
+}
+
+.nv-btn-primary {
+  background: var(--nv-gold);
+  color: var(--nv-ink);
+  box-shadow: 0 8px 18px rgba(242, 190, 66, 0.25);
+  border: none;
+  cursor: pointer;
+}
+
+.nv-btn-primary:hover {
+  filter: brightness(1.05);
+}
+
+.nv-btn-outline {
+  border: 1px solid rgba(15, 45, 92, 0.25);
+  color: var(--nv-blue-800);
+  background: rgba(15, 45, 92, 0.05);
+}
+
+.nv-btn-outline:hover {
+  background: rgba(15, 45, 92, 0.1);
+}
+
+/* Prevent nested CTA from hijacking full card click */
+.nv-card-button .nv-btn {
+  pointer-events: none;
+}
+
+.nv-fullpage-cta {
+  text-align: center;
+  margin-top: 40px;
+}
+
+/* Tablet */
+@media (min-width: 768px) {
+  .nv-grid {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+/* Desktop */
+@media (min-width: 1100px) {
+  .nv-grid {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .nv-card {
+    min-height: 280px;
+  }
+}
+
+/* Large screens */
+@media (min-width: 1440px) {
+  .nv-container {
+    max-width: 1360px;
+  }
+}
+
+/* Small mobile */
+@media (max-width: 640px) {
+  .nv-wrap {
+    padding: 64px 0;
+  }
+
+  .nv-container {
+    padding: 0 18px;
+  }
+
+  .nv-grid {
+    gap: 18px;
+    margin-top: 28px;
+  }
+
+  .nv-card {
+    padding: 24px 22px;
+    min-height: auto;
+    border-radius: 16px;
+  }
+
+  .nv-card-title {
+    font-size: 22px;
+  }
+
+  .nv-card-text {
+    font-size: 15px;
+  }
+
+  .nv-btn {
+    width: 100%;
+    text-align: center;
+  }
+}
