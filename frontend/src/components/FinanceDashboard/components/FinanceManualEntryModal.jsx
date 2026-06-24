@@ -1,799 +1,683 @@
-
-// src/components/FinanceDashboard/components/FinanceManualEntryModal.jsx
+// frontend/src/components/FinanceDashboard/components/FinanceManualEntryModal.jsx
 
 import React, { useEffect, useMemo, useState } from "react";
-import api from "../../api";
+import {
+  AlertTriangle,
+  Banknote,
+  CheckCircle2,
+  Landmark,
+  Receipt,
+  Save,
+  Smartphone,
+  X,
+} from "lucide-react";
 
-import "../../../styles/finance-dashboard.css";
-const PAYMENT_TYPES = [
-  { value: "membership", label: "Membership Dues" },
-  { value: "donation", label: "Donation" },
-  { value: "school", label: "Kids School" },
-  { value: "trip", label: "Trip Program" },
-  { value: "pledge", label: "Pledge" },
-  { value: "sunday_collection", label: "Sunday Collection" },
+import api from "../../api";
+import FinanceMemberLookup from "./FinanceMemberLookup.jsx";
+import "../../../styles/finance-enterprise.css";
+
+const PAYMENT_METHODS = [
+  { value: "cash", label: "Cash", icon: Banknote },
+  { value: "check", label: "Check", icon: Landmark },
+  { value: "zelle", label: "Zelle", icon: Smartphone },
 ];
 
-const METHODS = [
-  { value: "cash", label: "Cash" },
-  { value: "check", label: "Check" },
-  { value: "zelle", label: "Zelle" },
-  { value: "bank_deposit", label: "Bank Deposit" },
-  { value: "stripe_card", label: "Card" },
-  { value: "stripe_ach", label: "ACH Bank " },
-  { value: "manual", label: "Manual Entry" },
+const CATEGORY_OPTIONS = [
+  { value: "membership", label: "Membership" },
+  { value: "donation", label: "Donation" },
+  { value: "pledge", label: "Pledge" },
+  { value: "school", label: "School" },
+  { value: "trip", label: "Trip" },
+  { value: "general_collection", label: "General Collection" },
+  { value: "special_fund_collection", label: "Special Fund Collection" },
+  { value: "other", label: "Other" },
 ];
 
 const DONATION_CATEGORIES = [
-  {
-    value: "plate_collection",
-    amharic: "መባ",
-    english: "Plate Collection",
-    label: "መባ — Plate Collection",
-    type: "donation",
-  },
-
-  {
-    value: "candle_sale",
-    amharic: "ሻማ",
-    english: "Candle Sale",
-    label: "ሻማ — Candle Sale",
-    type: "donation",
-  },
-
-  {
-    value: "general_donation",
-    amharic: "ስጦታ",
-    english: "General Donation",
-    label: "ስጦታ — General Donation",
-    type: "donation",
-  },
-
-  {
-    value: "tithe",
-    amharic: "አስራት",
-    english: "Tithe",
-    label: "አስራት — Tithe",
-    type: "donation",
-  },
-
-  {
-    value: "vows",
-    amharic: "ስዕለት",
-    english: "Vows",
-    label: "ስዕለት — Vows",
-    type: "donation",
-  },
-
-  {
-    value: "baptism",
-    amharic: "ክርስትና",
-    english: "Baptism",
-    label: "ክርስትና — Baptism",
-    type: "service",
-  },
-
-  {
-    value: "wedding_engagement",
-    amharic: "ጋብቻ / ቀለበት",
-    english: "Wedding / Engagement",
-    label: "ጋብቻ / ቀለበት — Wedding / Engagement",
-    type: "service",
-  },
-
-  {
-    value: "memorial_service",
-    amharic: "ፍታት",
-    english: "Memorial Service",
-    label: "ፍታት — Memorial Service",
-    type: "service",
-  },
-
-  {
-    value: "pledge",
-    amharic: "ቃል የተገባ",
-    english: "Pledge",
-    label: "ቃል የተገባ — Pledge",
-    type: "receivable",
-  },
-
-  {
-    value: "building_fund",
-    amharic: "የቤተክርስቲያን ማሰሪያ",
-    english: "Building Fund",
-    label: "የቤተክርስቲያን ማሰሪያ — Building Fund",
-    type: "fund",
-  },
-
-  {
-    value: "charity_fund",
-    amharic: "በጎ አድራጎት",
-    english: "Charity Fund",
-    label: "በጎ አድራጎት — Charity Fund",
-    type: "fund",
-  },
-
-  {
-    value: "auction",
-    amharic: "ጨረታ",
-    english: "Auction",
-    label: "ጨረታ — Auction",
-    type: "event",
-  },
-
-  {
-    value: "other_fund",
-    amharic: "ሌላ (ይገልፅ)",
-    english: "Other Fund",
-    label: "ሌላ (ይገልፅ) — Other Fund",
-    type: "other",
-  },
-];
-const MONTHS = [
-  { value: 1, label: "January" },
-  { value: 2, label: "February" },
-  { value: 3, label: "March" },
-  { value: 4, label: "April" },
-  { value: 5, label: "May" },
-  { value: 6, label: "June" },
-  { value: 7, label: "July" },
-  { value: 8, label: "August" },
-  { value: 9, label: "September" },
-  { value: 10, label: "October" },
-  { value: 11, label: "November" },
-  { value: 12, label: "December" },
+  { value: "plate_collection", label: "መባ - Plate Collection" },
+  { value: "candle_sale", label: "ሻማ - Candle Sale" },
+  { value: "general_donation", label: "ስጦታ - General Donation" },
+  { value: "tithe", label: "አስራት - Tithe" },
+  { value: "vows", label: "ስዕለት - Vows" },
+  { value: "building_fund", label: "የቤተክርስቲያን ማሰሪያ - Building Fund" },
+  { value: "charity_fund", label: "በጎ አድራጎት - Charity Fund" },
+  { value: "auction", label: "ጨረታ - Auction" },
+  { value: "other_fund", label: "ሌላ - Other Fund" },
 ];
 
-const emptyForm = {
-  category: "membership",
-  sub_category: "",
-  payment_method: "cash",
-  member_id: "",
-  member_no: "",
-  full_name: "",
-  email: "",
-  phone: "",
-  amount: "",
-  quantity: 1,
-  months_paid: 1,
-  coverage_start_month: new Date().getMonth() + 1,
-  coverage_year: new Date().getFullYear(),
-  received_date: "",
-  reference_no: "",
-  notes: "",
-  send_receipt: true,
-  create_invoice: true,
-};
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
 
 function money(value) {
-  return Number(value || 0).toFixed(2);
+  return numberValue(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
-function normalizeRows(data) {
-  if (Array.isArray(data?.rows)) return data.rows;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data)) return data;
-  return [];
+function firstValue(row, keys, fallback = "") {
+  for (const key of keys) {
+    const value = row?.[key];
+
+    if (value !== undefined && value !== null && clean(value) !== "") {
+      return value;
+    }
+  }
+
+  return fallback;
 }
 
-function isStripeMethod(method) {
-  return method === "stripe_card" || method === "stripe_ach";
+function defaultForm(method = "cash", category = "donation") {
+  return {
+    payer_type: "member",
+    member_id: "",
+    member_no: "",
+    full_name: "",
+    email: "",
+    phone: "",
+
+    payment_method: method,
+    category,
+    donation_category: "general_donation",
+
+    amount: "",
+    reference_no: "",
+    check_number: "",
+    bank_name: "",
+    zelle_reference: "",
+    received_date: new Date().toISOString().slice(0, 10),
+
+    notes: "",
+    create_invoice: true,
+    send_invoice_email: true,
+    generate_receipt: true,
+    send_receipt_email: true,
+    create_ledger_entry: true,
+  };
 }
 
-export default function FinanceManualEntryModal({ open, onClose, onSaved }) {
-  const [form, setForm] = useState(emptyForm);
-  const [busy, setBusy] = useState(false);
-  const [err, setErr] = useState("");
-  const [plans, setPlans] = useState([]);
-  const [events, setEvents] = useState([]);
-  const [members, setMembers] = useState([]);
+async function postFirst(endpoints, payload) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.post(endpoint, payload);
+      return response.data;
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+}
+
+export default function FinanceManualEntryModal({
+  open,
+  onClose,
+  onSaved,
+  defaultMethod = "cash",
+  defaultCategory = "donation",
+  donor = null,
+  title = "Record Manual Payment",
+}) {
+  const [form, setForm] = useState(defaultForm(defaultMethod, defaultCategory));
+  const [selectedMember, setSelectedMember] = useState(null);
+
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+
+  const selectedMethod = useMemo(
+    () =>
+      PAYMENT_METHODS.find((method) => method.value === form.payment_method) ||
+      PAYMENT_METHODS[0],
+    [form.payment_method]
+  );
+
+  const MethodIcon = selectedMethod.icon;
+
+  const totalAmount = numberValue(form.amount);
 
   useEffect(() => {
     if (!open) return;
 
-    setForm(emptyForm);
-    setErr("");
-    loadPlans();
-    loadEvents();
-    loadMembers();
-  }, [open]);
+    const next = defaultForm(defaultMethod, defaultCategory);
 
-  async function loadPlans() {
-    try {
-      const { data } = await api.get("/dues/plans");
-      setPlans(normalizeRows(data));
-    } catch (error) {
-      console.error("loadPlans error:", error);
-      setPlans([]);
-    }
-  }
-
-  async function loadEvents() {
-    try {
-      const [schoolRes, tripRes] = await Promise.all([
-        api.get("/school/programs").catch(() => ({ data: { rows: [] } })),
-        api.get("/trip/programs").catch(() => ({ data: { rows: [] } })),
-      ]);
-
-      const schoolPrograms = normalizeRows(schoolRes.data).map((r) => ({
-        ...r,
-        category: "school",
-        title: r.title || r.program_name || "School Program",
-        price: r.price_per_person || r.price || 0,
-      }));
-
-      const tripPrograms = normalizeRows(tripRes.data).map((r) => ({
-        ...r,
-        category: "trip",
-        title: r.title || r.trip_name || "Trip Program",
-        price: r.price_per_person || r.price || 0,
-      }));
-
-      setEvents([...schoolPrograms, ...tripPrograms]);
-    } catch (error) {
-      console.error("loadEvents error:", error);
-      setEvents([]);
-    }
-  }
-
-  async function loadMembers() {
-    try {
-      const { data } = await api.get("/finance/members", {
-        params: {
-          page: 1,
-          limit: 500,
-          pageSize: 500,
-          search: "",
-          q: "",
-        },
-      });
-
-      setMembers(normalizeRows(data));
-    } catch (error) {
-      console.error("loadMembers error:", error);
-      setMembers([]);
-    }
-  }
-
-  const isMembership = form.category === "membership";
-  const isDonation = form.category === "donation";
-  const isSchool = form.category === "school";
-  const isTrip = form.category === "trip";
-  const isCheck = form.payment_method === "check";
-  const isStripe = isStripeMethod(form.payment_method);
-
-  const selectedPlan = useMemo(() => {
-    return plans.find((p) => String(p.id) === String(form.sub_category));
-  }, [plans, form.sub_category]);
-
-  const filteredPrograms = useMemo(() => {
-    return events.filter((ev) =>
-      isSchool ? ev.category === "school" : ev.category === "trip"
-    );
-  }, [events, isSchool, isTrip]);
-
-  const selectedProgram = useMemo(() => {
-    return events.find((ev) => String(ev.id) === String(form.sub_category));
-  }, [events, form.sub_category]);
-
-  const coverageEndMonth = useMemo(() => {
-    const start = Number(form.coverage_start_month || 1);
-    const duration = Number(selectedPlan?.duration_months || form.months_paid || 1);
-
-    let end = start + duration - 1;
-
-    while (end > 12) {
-      end -= 12;
-    }
-
-    return end;
-  }, [form.coverage_start_month, form.months_paid, selectedPlan]);
-
-  const calculatedAmount = useMemo(() => {
-    if (isMembership) {
-      return Number(
-        selectedPlan?.minimum_amount ||
-          selectedPlan?.amount ||
-          form.amount ||
-          0
+    if (donor) {
+      next.member_id = firstValue(donor, ["id", "member_id"], "");
+      next.member_no = firstValue(donor, ["member_no", "member_number"], "");
+      next.full_name = firstValue(
+        donor,
+        ["full_name", "payer_name", "donor_name", "name"],
+        ""
       );
+      next.email = firstValue(donor, ["email", "payer_email", "donor_email"], "");
+      next.phone = firstValue(donor, ["phone", "payer_phone", "donor_phone"], "");
+      next.payer_type = next.member_id || next.member_no ? "member" : "guest";
     }
 
-    if (isSchool || isTrip) {
-      return (
-        Number(selectedProgram?.price_per_person || selectedProgram?.price || 0) *
-        Number(form.quantity || 1)
-      );
-    }
+    setForm(next);
+    setSelectedMember(donor || null);
+    setError("");
+    setSuccess("");
+    setSaving(false);
+  }, [open, defaultMethod, defaultCategory, donor]);
 
-    return Number(form.amount || 0);
-  }, [isMembership, isSchool, isTrip, selectedPlan, selectedProgram, form.amount, form.quantity]);
-
-  const valid = useMemo(() => {
-    if (!form.category) return false;
-
-    if (isMembership && !selectedPlan?.id) return false;
-
-    if ((isSchool || isTrip) && !selectedProgram?.id) return false;
-
-    if (form.category === "membership" && !form.member_id) return false;
-
-    if (!calculatedAmount || Number(calculatedAmount) <= 0) return false;
-
-    if (isStripe && !form.email) return false;
-
-    return true;
-  }, [form, selectedPlan, selectedProgram, calculatedAmount, isMembership, isSchool, isTrip, isStripe]);
-
-  function upd(key, value) {
-    setForm((s) => ({
-      ...s,
+  function setValue(key, value) {
+    setForm((prev) => ({
+      ...prev,
       [key]: value,
     }));
   }
 
-  function closeModal() {
-    if (busy) return;
-
-    setForm(emptyForm);
-    setErr("");
+  function close() {
+    if (saving) return;
     onClose?.();
   }
 
-  function selectMember(memberId) {
-    const selected = members.find((m) => String(m.id) === String(memberId));
+  function handleMemberSelect(snapshot) {
+    setSelectedMember(snapshot);
 
-    setForm((s) => ({
-      ...s,
-      member_id: selected?.id || "",
-      member_no: selected?.member_no || "",
-      full_name: selected?.full_name || "",
-      email: selected?.email || "",
-      phone: selected?.phone || "",
-    }));
-  }
-
-  function selectPlan(planId) {
-    const selected = plans.find((p) => String(p.id) === String(planId));
-
-    setForm((s) => ({
-      ...s,
-      sub_category: planId,
-      amount: selected?.minimum_amount || selected?.amount || "",
-      months_paid: selected?.duration_months || 1,
-    }));
-  }
-
-  function selectProgram(programId) {
-    const selected = events.find((ev) => String(ev.id) === String(programId));
-
-    setForm((s) => ({
-      ...s,
-      sub_category: programId,
-      amount: selected?.price_per_person || selected?.price || "",
-    }));
-  }
-
-  async function submit(e) {
-    e.preventDefault();
-    setErr("");
-
-    if (!valid) {
-      setErr(
-        isStripe && !form.email
-          ? "Email is required for Stripe checkout."
-          : "Please complete all required fields."
-      );
+    if (!snapshot) {
+      setForm((prev) => ({
+        ...prev,
+        member_id: "",
+        member_no: "",
+        full_name: "",
+        email: "",
+        phone: "",
+      }));
       return;
     }
 
+    setForm((prev) => ({
+      ...prev,
+      payer_type: "member",
+      member_id: snapshot.member_id || snapshot.id || "",
+      member_no: snapshot.member_no || "",
+      full_name: snapshot.full_name || "",
+      email: snapshot.email || "",
+      phone: snapshot.phone || "",
+    }));
+  }
+
+  function handleGuestChange(snapshot) {
+    setForm((prev) => ({
+      ...prev,
+      payer_type: "guest",
+      member_id: "",
+      member_no: "",
+      full_name: snapshot.full_name || "",
+      email: snapshot.email || "",
+      phone: snapshot.phone || "",
+    }));
+  }
+
+  function referenceForMethod() {
+    if (form.payment_method === "check") {
+      return clean(form.check_number) || clean(form.reference_no);
+    }
+
+    if (form.payment_method === "zelle") {
+      return clean(form.zelle_reference) || clean(form.reference_no);
+    }
+
+    return clean(form.reference_no);
+  }
+
+  function validate() {
+    if (!clean(form.full_name)) {
+      setError("Payer name is required.");
+      return false;
+    }
+
+    if (form.payer_type === "member" && !clean(form.member_no) && !clean(form.member_id)) {
+      setError("Select a member or switch to non-member.");
+      return false;
+    }
+
+    if (totalAmount <= 0) {
+      setError("Enter a valid payment amount.");
+      return false;
+    }
+
+    if (!form.received_date) {
+      setError("Received date is required.");
+      return false;
+    }
+
+    if (["check", "zelle"].includes(form.payment_method) && !referenceForMethod()) {
+      setError(
+        form.payment_method === "check"
+          ? "Check number is required."
+          : "Zelle reference is required."
+      );
+      return false;
+    }
+
+    if ((form.send_invoice_email || form.send_receipt_email) && !clean(form.email)) {
+      setError("Email is required when sending invoice or receipt email.");
+      return false;
+    }
+
+    return true;
+  }
+
+  function buildPayload() {
+    const reference = referenceForMethod();
+    const invoiceItem = {
+      item_type: form.category,
+      item_name:
+        form.category === "donation"
+          ? form.donation_category
+          : form.category,
+      description: clean(form.notes) || `${form.category} manual payment`,
+      quantity: 1,
+      unit_price: totalAmount,
+      total_price: totalAmount,
+    };
+
+    return {
+      payer_type: form.payer_type,
+      donor_type: form.payer_type,
+
+      member_id: clean(form.member_id) || null,
+      member_no: clean(form.member_no) || null,
+
+      full_name: clean(form.full_name),
+      full_name_snapshot: clean(form.full_name),
+      payer_name: clean(form.full_name),
+      donor_name: clean(form.full_name),
+
+      email: clean(form.email) || null,
+      email_snapshot: clean(form.email) || null,
+      payer_email: clean(form.email) || null,
+
+      phone: clean(form.phone) || null,
+      phone_snapshot: clean(form.phone) || null,
+
+      category: form.category,
+      payment_type: form.category,
+      sub_category:
+        form.category === "donation"
+          ? form.donation_category
+          : form.category,
+
+      donation_category:
+        form.category === "donation" ? form.donation_category : null,
+
+      amount: totalAmount,
+      payment_amount: totalAmount,
+      total_amount: totalAmount,
+      invoice_amount: totalAmount,
+      invoice_total_amount: totalAmount,
+      subtotal_amount: totalAmount,
+      amount_due: 0,
+      balance_due: 0,
+      paid_amount: totalAmount,
+
+      method: form.payment_method,
+      payment_method: form.payment_method,
+      provider: form.payment_method,
+
+      reference_no: reference || null,
+      reference_number: reference || null,
+      transaction_reference: reference || null,
+
+      check_number:
+        form.payment_method === "check" ? clean(form.check_number) : null,
+      bank_name:
+        form.payment_method === "check" ? clean(form.bank_name) || null : null,
+
+      zelle_reference:
+        form.payment_method === "zelle" ? clean(form.zelle_reference) : null,
+
+      received_date: form.received_date,
+      received_at: form.received_date,
+      paid_at: form.received_date,
+
+      status: "paid",
+      payment_status: "paid",
+      manual_status: "verified",
+
+      notes: clean(form.notes) || null,
+
+      create_invoice: Boolean(form.create_invoice),
+      generate_invoice: Boolean(form.create_invoice),
+      send_invoice_email: Boolean(form.create_invoice && form.send_invoice_email),
+      create_payment_link: false,
+      public_payment_link: false,
+      include_payment_link: false,
+      send_payment_link: false,
+
+      items: [invoiceItem],
+      line_items: [invoiceItem],
+      invoice_items: [invoiceItem],
+
+      generate_receipt: Boolean(form.generate_receipt),
+      create_receipt: Boolean(form.generate_receipt),
+      send_receipt_email: Boolean(form.generate_receipt && form.send_receipt_email),
+
+      create_ledger_entry: Boolean(form.create_ledger_entry),
+      update_ledger: Boolean(form.create_ledger_entry),
+
+      manual_entry: true,
+      manual_payment: true,
+      manual_entry_type: form.payment_method,
+      source: "finance_manual_entry_modal",
+    };
+  }
+
+  async function submit(event) {
+    event.preventDefault();
+
+    setError("");
+    setSuccess("");
+
+    if (!validate()) return;
+
+    setSaving(true);
+
     try {
-      setBusy(true);
+      const payload = buildPayload();
 
-      const amount = Number(calculatedAmount || 0);
-      const coverageYear = Number(form.coverage_year || new Date().getFullYear());
-      const coverageLabel = `${MONTHS.find((m) => Number(m.value) === Number(form.coverage_start_month))?.label || form.coverage_start_month} ${coverageYear} - ${MONTHS.find((m) => Number(m.value) === Number(coverageEndMonth))?.label || coverageEndMonth} ${coverageYear}`;
+      const endpoints = [
+        `/finance/${form.payment_method}`,
+        "/finance/payments",
+        "/finance/manual-entries",
+      ];
 
-      if (isStripe) {
-        const checkoutPayload = {
-          category: form.category,
-          payment_type: form.category,
-          type: form.category,
+      const response = await postFirst(endpoints, payload);
 
-          sub_category:
-            selectedPlan?.plan_name ||
-            selectedProgram?.title ||
-            form.sub_category,
-
-          member_id: form.member_id || null,
-          member_no: form.member_no || null,
-          full_name: form.full_name || null,
-          email: form.email || null,
-          phone: form.phone || null,
-
-          payment_method:
-            form.payment_method === "stripe_ach" ? "ach" : "card",
-          method:
-            form.payment_method === "stripe_ach" ? "ach" : "card",
-          provider: "stripe",
-
-          amount,
-          total_amount: amount,
-          quantity: Number(form.quantity || 1),
-
-          plan_id: selectedPlan?.id || null,
-          dues_plan_id: selectedPlan?.id || null,
-          plan_name: selectedPlan?.plan_name || null,
-          duration_months: Number(selectedPlan?.duration_months || form.months_paid || 1),
-          months_paid: Number(selectedPlan?.duration_months || form.months_paid || 1),
-
-          coverage_year: coverageYear,
-          coverage_start_month: Number(form.coverage_start_month || 1),
-          coverage_end_month: coverageEndMonth,
-          coverage_label: isMembership ? coverageLabel : null,
-
-          related_entity_id: selectedProgram?.id || null,
-          news_event_id: selectedProgram?.id || null,
-          program_id: selectedProgram?.id || null,
-          program_name: selectedProgram?.title || null,
-          program_title: selectedProgram?.title || null,
-
-          donation_category: isDonation ? form.sub_category : null,
-
-          source: "finance",
-          created_from: "finance",
-          send_receipt_email: true,
-          create_invoice: true,
-          create_ledger_entry: true,
-
-          success_url:
-            `${window.location.origin}/dash/finance/payments?status=success&session_id={CHECKOUT_SESSION_ID}`,
-          cancel_url:
-            `${window.location.origin}/dash/finance/payments?status=cancelled`,
-        };
-
-        const { data } = await api.post("/checkout/create-session", checkoutPayload);
-
-        const checkoutUrl = data?.url || data?.checkout_url || data?.stripe_url;
-
-        if (checkoutUrl && typeof checkoutUrl === "string") {
-          window.location.href = checkoutUrl;
-          return;
-        }
-
-        throw new Error("Stripe checkout URL was not returned.");
-      }
-
-      await api.post("/finance/manual-entries", {
-        category: form.category,
-        payment_type: form.category,
-
-        sub_category:
-          selectedPlan?.plan_name ||
-          selectedProgram?.title ||
-          form.sub_category,
-
-        payment_method: form.payment_method,
-        method: form.payment_method,
-        provider: form.payment_method,
-
-        member_id: form.member_id || null,
-        member_no: form.member_no || null,
-        full_name: form.full_name || null,
-        email: form.email || null,
-        phone: form.phone || null,
-
-        amount,
-        total_amount: amount,
-        quantity: Number(form.quantity || 1),
-
-        plan_id: selectedPlan?.id || null,
-        dues_plan_id: selectedPlan?.id || null,
-        plan_name: selectedPlan?.plan_name || null,
-        months_paid: Number(selectedPlan?.duration_months || form.months_paid || 1),
-
-        coverage_year: isMembership ? coverageYear : null,
-        coverage_start_month: isMembership ? Number(form.coverage_start_month || 1) : null,
-        coverage_end_month: isMembership ? coverageEndMonth : null,
-        coverage_label: isMembership ? coverageLabel : null,
-
-        related_entity_id: selectedProgram?.id || null,
-        program_id: selectedProgram?.id || null,
-        program_title: selectedProgram?.title || null,
-
-        received_date: form.received_date || null,
-        reference_no: form.reference_no || null,
-        notes: form.notes || null,
-
-        send_receipt: !!form.send_receipt,
-        send_receipt_email: !!form.send_receipt,
-        create_invoice: !!form.create_invoice,
-        create_ledger_entry: true,
-      });
-
-      onSaved?.();
-      closeModal();
-    } catch (e2) {
-      console.error("Finance payment submit error:", e2);
-      setErr(
-        e2?.response?.data?.error ||
-          e2?.response?.data?.message ||
-          e2?.message ||
-          "Failed to save payment."
+      setSuccess("Manual payment recorded successfully.");
+      onSaved?.(response);
+      close();
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to record manual payment."
       );
     } finally {
-      setBusy(false);
+      setSaving(false);
     }
   }
 
   if (!open) return null;
 
   return (
-    <div className="terms-overlay">
-      <div className="finance-modal-card finance-modal-card-lg">
+    <div className="finance-modal-backdrop" role="presentation">
+      <form className="finance-modal finance-modal-wide" onSubmit={submit}>
         <div className="finance-modal-head">
           <div>
-            <p className="finance-modal-eyebrow">Unified Finance Payment</p>
-            <h2>Record Payment</h2>
-            <p>
-              Enterprise payment processing for membership, donations, school,
-              trip, pledge, ACH, Stripe card, and in-person collections.
-            </p>
+            <p className="finance-eyebrow">Manual Finance Entry</p>
+            <h2>{title}</h2>
+            <span>
+              Record cash, check, or Zelle payments with invoice, receipt,
+              email, ledger, and audit records.
+            </span>
           </div>
 
           <button
             type="button"
-            className="terms-close"
-            onClick={closeModal}
-            disabled={busy}
+            className="finance-icon-button"
+            onClick={close}
+            aria-label="Close"
           >
-            ✕
+            <X size={18} />
           </button>
         </div>
 
-        <form className="finance-modal-form" onSubmit={submit}>
-          <div className="auth-field">
-            <label>Existing Member</label>
+        {error ? (
+          <div className="finance-alert danger">
+            <AlertTriangle size={16} />
+            {error}
+          </div>
+        ) : null}
 
-            <select value={form.member_id} onChange={(e) => selectMember(e.target.value)}>
-              <option value="">Select Member</option>
+        {success ? (
+          <div className="finance-alert success">
+            <CheckCircle2 size={16} />
+            {success}
+          </div>
+        ) : null}
 
-              {members.map((m) => (
-                <option key={m.id} value={m.id}>
-                  {m.member_no || "MEM"} — {m.full_name} — {m.email || "No Email"}
-                </option>
-              ))}
-            </select>
+        <div className="finance-method-switcher">
+          {PAYMENT_METHODS.map((method) => {
+            const Icon = method.icon;
+
+            return (
+              <button
+                key={method.value}
+                type="button"
+                className={form.payment_method === method.value ? "active" : ""}
+                onClick={() => setValue("payment_method", method.value)}
+              >
+                <Icon size={16} />
+                {method.label}
+              </button>
+            );
+          })}
+        </div>
+
+        <FinanceMemberLookup
+          value={selectedMember}
+          payerType={form.payer_type}
+          onPayerTypeChange={(value) => setValue("payer_type", value)}
+          onSelect={handleMemberSelect}
+          onGuestChange={handleGuestChange}
+          required
+        />
+
+        <section className="finance-modal-section">
+          <div className="finance-section-head">
+            <div>
+              <h3>
+                <MethodIcon size={17} />
+                Payment Details
+              </h3>
+              <p>
+                Manual payments are stored with payer snapshot, reference,
+                method, category, and staff audit metadata.
+              </p>
+            </div>
+
+            <span className="finance-status-badge success">
+              {money(totalAmount)}
+            </span>
           </div>
 
-          <div className="finance-modal-grid finance-modal-grid-2">
-            <div className="auth-field">
-              <label>Payment Category</label>
-
+          <div className="finance-form-grid three">
+            <label>
+              Category *
               <select
                 value={form.category}
-                onChange={(e) =>
-                  setForm((s) => ({
-                    ...s,
-                    category: e.target.value,
-                    sub_category: "",
-                    amount: "",
-                    quantity: 1,
-                    months_paid: 1,
-                  }))
-                }
+                onChange={(event) => setValue("category", event.target.value)}
               >
-                {PAYMENT_TYPES.map((p) => (
-                  <option key={p.value} value={p.value}>
-                    {p.label}
+                {CATEGORY_OPTIONS.map((option) => (
+                  <option key={option.value} value={option.value}>
+                    {option.label}
                   </option>
                 ))}
               </select>
-            </div>
+            </label>
 
-            <div className="auth-field">
-              <label>Payment Method</label>
+            {form.category === "donation" ? (
+              <label>
+                Donation Category
+                <select
+                  value={form.donation_category}
+                  onChange={(event) =>
+                    setValue("donation_category", event.target.value)
+                  }
+                >
+                  {DONATION_CATEGORIES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+            ) : null}
 
-              <select value={form.payment_method} onChange={(e) => upd("payment_method", e.target.value)}>
-                {METHODS.map((m) => (
-                  <option key={m.value} value={m.value}>
-                    {m.label}
-                  </option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <div className="finance-modal-grid finance-modal-grid-2">
-            <div className="auth-field">
-              <label>Full Name</label>
-              <input value={form.full_name} readOnly />
-            </div>
-
-            <div className="auth-field">
-              <label>Email {isStripe ? "*" : ""}</label>
-              <input
-                value={form.email}
-                onChange={(e) => upd("email", e.target.value)}
-                readOnly={!!form.member_id}
-              />
-            </div>
-          </div>
-
-          {isMembership ? (
-            <>
-              <div className="finance-modal-grid finance-modal-grid-2">
-                <div className="auth-field">
-                  <label>Membership Plan *</label>
-
-                  <select value={form.sub_category} onChange={(e) => selectPlan(e.target.value)}>
-                    <option value="">Select Plan</option>
-
-                    {plans.map((p) => (
-                      <option key={p.id} value={p.id}>
-                        {p.plan_name || p.name} — {p.duration_months || 1} Months — $
-                        {money(p.minimum_amount || p.amount)}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="auth-field">
-                  <label>Months Paid</label>
-                  <input type="number" min="1" value={form.months_paid} readOnly />
-                </div>
-              </div>
-
-              <div className="finance-modal-grid finance-modal-grid-3">
-                <div className="auth-field">
-                  <label>Coverage Start Month</label>
-
-                  <select
-                    value={form.coverage_start_month || 1}
-                    onChange={(e) => upd("coverage_start_month", e.target.value)}
-                  >
-                    {MONTHS.map((m) => (
-                      <option key={m.value} value={m.value}>
-                        {m.label}
-                      </option>
-                    ))}
-                  </select>
-                </div>
-
-                <div className="auth-field">
-                  <label>Coverage End Month</label>
-                  <input
-                    value={
-                      MONTHS.find((m) => Number(m.value) === Number(coverageEndMonth))?.label ||
-                      coverageEndMonth
-                    }
-                    disabled
-                  />
-                </div>
-
-                <div className="auth-field">
-                  <label>Coverage Year</label>
-                  <input
-                    type="number"
-                    value={form.coverage_year || new Date().getFullYear()}
-                    onChange={(e) => upd("coverage_year", e.target.value)}
-                  />
-                </div>
-              </div>
-            </>
-          ) : null}
-
-          {isDonation ? (
-            <div className="auth-field">
-              <label>Donation Category</label>
-
-              <select value={form.sub_category} onChange={(e) => upd("sub_category", e.target.value)}>
-               {DONATION_CATEGORIES.map((d) => (
-  <option
-    key={d.value}
-    value={d.value}
-  >
-    {d.amharic} — {d.english}
-  </option>
-))}
-              </select>
-            </div>
-          ) : null}
-
-          {(isSchool || isTrip) ? (
-            <div className="auth-field">
-              <label>Program *</label>
-
-              <select value={form.sub_category} onChange={(e) => selectProgram(e.target.value)}>
-                <option value="">Select Program</option>
-
-                {filteredPrograms.map((ev) => (
-                  <option key={ev.id} value={ev.id}>
-                    {ev.title} — ${money(ev.price_per_person || ev.price)}
-                  </option>
-                ))}
-              </select>
-            </div>
-          ) : null}
-
-          <div className="finance-modal-grid finance-modal-grid-2">
-            <div className="auth-field">
-              <label>Amount</label>
+            <label>
+              Amount *
               <input
                 type="number"
+                min="0"
                 step="0.01"
-                value={calculatedAmount || ""}
-                onChange={(e) => upd("amount", e.target.value)}
-                readOnly={isMembership || isSchool || isTrip}
+                value={form.amount}
+                onChange={(event) => setValue("amount", event.target.value)}
+                placeholder="0.00"
+                required
               />
-            </div>
-
-            <div className="auth-field">
-              <label>Quantity</label>
-              <input
-                type="number"
-                min="1"
-                value={form.quantity}
-                onChange={(e) => upd("quantity", e.target.value)}
-                disabled={isMembership}
-              />
-            </div>
-          </div>
-
-          {isCheck ? (
-            <div className="auth-field">
-              <label>Check Number</label>
-              <input value={form.reference_no} onChange={(e) => upd("reference_no", e.target.value)} />
-            </div>
-          ) : null}
-
-          <div className="auth-field">
-            <label>Notes</label>
-            <textarea rows={3} value={form.notes} onChange={(e) => upd("notes", e.target.value)} />
-          </div>
-
-          <div className="finance-checkbox-row">
-            <label>
-              <input
-                type="checkbox"
-                checked={form.send_receipt}
-                onChange={(e) => upd("send_receipt", e.target.checked)}
-              />
-              Send Receipt
             </label>
 
             <label>
+              Received Date *
               <input
-                type="checkbox"
-                checked={form.create_invoice}
-                onChange={(e) => upd("create_invoice", e.target.checked)}
+                type="date"
+                value={form.received_date}
+                onChange={(event) => setValue("received_date", event.target.value)}
+                required
               />
-              Create Invoice
             </label>
+
+            {form.payment_method === "check" ? (
+              <>
+                <label>
+                  Check Number *
+                  <input
+                    value={form.check_number}
+                    onChange={(event) =>
+                      setValue("check_number", event.target.value)
+                    }
+                    placeholder="Check #"
+                    required
+                  />
+                </label>
+
+                <label>
+                  Bank Name
+                  <input
+                    value={form.bank_name}
+                    onChange={(event) => setValue("bank_name", event.target.value)}
+                    placeholder="Bank name"
+                  />
+                </label>
+              </>
+            ) : null}
+
+            {form.payment_method === "zelle" ? (
+              <label>
+                Zelle Reference *
+                <input
+                  value={form.zelle_reference}
+                  onChange={(event) =>
+                    setValue("zelle_reference", event.target.value)
+                  }
+                  placeholder="Zelle confirmation/reference"
+                  required
+                />
+              </label>
+            ) : null}
+
+            {form.payment_method === "cash" ? (
+              <label>
+                Cash Reference
+                <input
+                  value={form.reference_no}
+                  onChange={(event) => setValue("reference_no", event.target.value)}
+                  placeholder="Optional receipt/batch reference"
+                />
+              </label>
+            ) : null}
           </div>
+        </section>
 
-          {err ? <div className="auth-banner">{err}</div> : null}
+        <label className="finance-field-full">
+          Notes
+          <textarea
+            rows={3}
+            value={form.notes}
+            onChange={(event) => setValue("notes", event.target.value)}
+            placeholder="Optional internal note"
+          />
+        </label>
 
-          <div className="finance-modal-actions">
-            <button
-              type="button"
-              className="finance-btn finance-btn-secondary"
-              onClick={closeModal}
-              disabled={busy}
-            >
-              Cancel
-            </button>
+        <div className="finance-check-grid">
+          <label>
+            <input
+              type="checkbox"
+              checked={form.create_invoice}
+              onChange={(event) => setValue("create_invoice", event.target.checked)}
+            />
+            Create invoice
+          </label>
 
-            <button type="submit" className="finance-btn finance-btn-primary" disabled={busy || !valid}>
-              {busy
-                ? "Processing..."
-                : isStripe
-                ? "Continue to Stripe"
-                : "Record Payment"}
-            </button>
-          </div>
-        </form>
-      </div>
+          <label>
+            <input
+              type="checkbox"
+              checked={form.send_invoice_email}
+              onChange={(event) =>
+                setValue("send_invoice_email", event.target.checked)
+              }
+            />
+            Email invoice
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={form.generate_receipt}
+              onChange={(event) =>
+                setValue("generate_receipt", event.target.checked)
+              }
+            />
+            Generate receipt
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={form.send_receipt_email}
+              onChange={(event) =>
+                setValue("send_receipt_email", event.target.checked)
+              }
+            />
+            Email receipt
+          </label>
+
+          <label>
+            <input
+              type="checkbox"
+              checked={form.create_ledger_entry}
+              onChange={(event) =>
+                setValue("create_ledger_entry", event.target.checked)
+              }
+            />
+            Post ledger
+          </label>
+        </div>
+
+        <div className="finance-modal-actions">
+          <button type="button" className="finance-btn ghost" onClick={close}>
+            Cancel
+          </button>
+
+          <button type="submit" className="finance-btn primary" disabled={saving}>
+            {form.generate_receipt ? <Receipt size={16} /> : <Save size={16} />}
+            {saving ? "Saving..." : "Record Payment"}
+          </button>
+        </div>
+      </form>
     </div>
   );
 }

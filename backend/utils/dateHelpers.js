@@ -1,343 +1,258 @@
-//backend\utils\dateHelpers.js
+// backend/utils/dateHelpers.js
 "use strict";
 
-/*
-=========================================================
- ENTERPRISE DATE HELPERS
----------------------------------------------------------
- Centralized finance + membership date utilities
-=========================================================
-*/
-
-/* =========================================================
-   HELPERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Core                                                                       */
+/* -------------------------------------------------------------------------- */
 
 function toDate(value) {
+  if (!value) return null;
 
-  if (!value) {
-    return null;
-  }
-
-  const d =
+  const date =
     value instanceof Date
-      ? value
+      ? new Date(value.getTime())
       : new Date(value);
 
-  return Number.isNaN(d.getTime())
-    ? null
-    : d;
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
-function cloneDate(date) {
+function ensureDate(value, fallback = new Date()) {
+  return toDate(value) || toDate(fallback) || new Date();
+}
 
-  return new Date(
-    date.getTime()
-  );
+function cloneDate(value) {
+  return new Date(ensureDate(value).getTime());
 }
 
 function pad(value) {
-
-  return String(value)
-    .padStart(2, "0");
+  return String(value).padStart(2, "0");
 }
 
-/* =========================================================
-   MYSQL DATETIME
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* MySQL Formats                                                              */
+/* -------------------------------------------------------------------------- */
 
-function mysqlDateTime(
-  value = new Date()
-) {
-
-  const d =
-    toDate(value);
-
-  if (!d) {
-    return null;
-  }
+function mysqlDateTime(value = new Date()) {
+  const date = ensureDate(value);
 
   return (
-    `${d.getFullYear()}-` +
-    `${pad(d.getMonth() + 1)}-` +
-    `${pad(d.getDate())} ` +
-    `${pad(d.getHours())}:` +
-    `${pad(d.getMinutes())}:` +
-    `${pad(d.getSeconds())}`
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())} ` +
+    `${pad(date.getHours())}:` +
+    `${pad(date.getMinutes())}:` +
+    `${pad(date.getSeconds())}`
   );
 }
 
-/* =========================================================
-   MYSQL DATE
-========================================================= */
+function mysqlNow(value = new Date()) {
+  return mysqlDateTime(value);
+}
 
-function mysqlDate(
-  value = new Date()
-) {
-
-  const d =
-    toDate(value);
-
-  if (!d) {
-    return null;
-  }
+function mysqlDate(value = new Date()) {
+  const date = ensureDate(value);
 
   return (
-    `${d.getFullYear()}-` +
-    `${pad(d.getMonth() + 1)}-` +
-    `${pad(d.getDate())}`
+    `${date.getFullYear()}-` +
+    `${pad(date.getMonth() + 1)}-` +
+    `${pad(date.getDate())}`
   );
 }
 
-/* =========================================================
-   ADD MONTHS
-========================================================= */
-
-function addMonths(
-  date,
-  months
-) {
-
-  const d =
-    cloneDate(
-      toDate(date)
-    );
-
-  d.setMonth(
-    d.getMonth() + Number(months || 0)
-  );
-
-  return d;
+function dateOnly(value = new Date()) {
+  return mysqlDate(value);
 }
 
-/* =========================================================
-   ADD DAYS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Date Math                                                                  */
+/* -------------------------------------------------------------------------- */
 
-function addDays(
-  date,
-  days
-) {
+function addMonths(value, months = 0) {
+  const source = ensureDate(value);
+  const day = source.getDate();
 
-  const d =
-    cloneDate(
-      toDate(date)
-    );
+  const target = new Date(source.getTime());
+  target.setDate(1);
+  target.setMonth(target.getMonth() + Number(months || 0));
 
-  d.setDate(
-    d.getDate() + Number(days || 0)
-  );
-
-  return d;
-}
-
-/* =========================================================
-   START OF MONTH
-========================================================= */
-
-function startOfMonth(
-  date = new Date()
-) {
-
-  const d =
-    cloneDate(
-      toDate(date)
-    );
-
-  d.setDate(1);
-
-  d.setHours(
-    0,
-    0,
-    0,
+  const lastDay = new Date(
+    target.getFullYear(),
+    target.getMonth() + 1,
     0
-  );
+  ).getDate();
 
-  return d;
+  target.setDate(Math.min(day, lastDay));
+
+  return target;
 }
 
-/* =========================================================
-   END OF MONTH
-========================================================= */
-
-function endOfMonth(
-  date = new Date()
-) {
-
-  const d =
-    cloneDate(
-      toDate(date)
-    );
-
-  d.setMonth(
-    d.getMonth() + 1
-  );
-
-  d.setDate(0);
-
-  d.setHours(
-    23,
-    59,
-    59,
-    999
-  );
-
-  return d;
+function addDays(value, days = 0) {
+  const date = cloneDate(value);
+  date.setDate(date.getDate() + Number(days || 0));
+  return date;
 }
 
-/* =========================================================
-   MEMBERSHIP COVERAGE
-========================================================= */
-
-function calculateCoverage({
-
-  startDate = new Date(),
-
-  monthsPaid = 1,
-}) {
-
-  const coverageStart =
-    startOfMonth(startDate);
-
-  const coverageEnd =
-    endOfMonth(
-      addMonths(
-        coverageStart,
-        monthsPaid - 1
-      )
-    );
-
-  return {
-
-    coverage_start:
-      mysqlDate(
-        coverageStart
-      ),
-
-    coverage_end:
-      mysqlDate(
-        coverageEnd
-      ),
-
-    coverage_label:
-      buildCoverageLabel(
-        coverageStart,
-        coverageEnd
-      ),
-  };
+function startOfDay(value = new Date()) {
+  const date = cloneDate(value);
+  date.setHours(0, 0, 0, 0);
+  return date;
 }
 
-/* =========================================================
-   COVERAGE LABEL
-========================================================= */
+function endOfDay(value = new Date()) {
+  const date = cloneDate(value);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
 
-function buildCoverageLabel(
-  startDate,
-  endDate
-) {
+function startOfMonth(value = new Date()) {
+  const date = cloneDate(value);
+  date.setDate(1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
 
-  const start =
-    toDate(startDate);
+function endOfMonth(value = new Date()) {
+  const date = startOfMonth(value);
+  date.setMonth(date.getMonth() + 1);
+  date.setDate(0);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
 
-  const end =
-    toDate(endDate);
+function startOfYear(value = new Date()) {
+  const date = cloneDate(value);
+  date.setMonth(0, 1);
+  date.setHours(0, 0, 0, 0);
+  return date;
+}
 
-  if (!start || !end) {
-    return null;
-  }
+function endOfYear(value = new Date()) {
+  const date = cloneDate(value);
+  date.setMonth(11, 31);
+  date.setHours(23, 59, 59, 999);
+  return date;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Membership Coverage                                                        */
+/* -------------------------------------------------------------------------- */
+
+function buildCoverageLabel(startDate, endDate) {
+  const start = toDate(startDate);
+  const end = toDate(endDate);
+
+  if (!start || !end) return null;
 
   const options = {
     year: "numeric",
     month: "short",
   };
 
-  const startLabel =
-    start.toLocaleDateString(
-      "en-US",
-      options
-    );
-
-  const endLabel =
-    end.toLocaleDateString(
-      "en-US",
-      options
-    );
+  const startLabel = start.toLocaleDateString("en-US", options);
+  const endLabel = end.toLocaleDateString("en-US", options);
 
   return startLabel === endLabel
-
     ? startLabel
-
     : `${startLabel} - ${endLabel}`;
 }
 
-/* =========================================================
-   DAYS BETWEEN
-========================================================= */
+function coverageMonthKeys(startDate, monthsPaid = 1) {
+  const start = startOfMonth(startDate);
+  const months = Math.max(1, Math.trunc(Number(monthsPaid || 1)));
 
-function daysBetween(
-  startDate,
-  endDate
-) {
+  return Array.from({ length: months }, (_item, index) => {
+    const date = addMonths(start, index);
 
-  const start =
-    toDate(startDate);
+    return {
+      year: date.getFullYear(),
+      month: date.getMonth() + 1,
+      key: `${date.getFullYear()}-${pad(date.getMonth() + 1)}`,
+      label: date.toLocaleDateString("en-US", {
+        month: "short",
+        year: "numeric",
+      }),
+    };
+  });
+}
 
-  const end =
-    toDate(endDate);
+function calculateCoverage({ startDate = new Date(), monthsPaid = 1 } = {}) {
+  const months = Math.max(1, Math.trunc(Number(monthsPaid || 1)));
+  const coverageStart = startOfMonth(startDate);
+  const coverageEnd = endOfMonth(addMonths(coverageStart, months - 1));
 
-  if (!start || !end) {
-    return 0;
-  }
+  return {
+    coverage_start: mysqlDate(coverageStart),
+    coverage_end: mysqlDate(coverageEnd),
+    coverage_label: buildCoverageLabel(coverageStart, coverageEnd),
+    coverage_months: coverageMonthKeys(coverageStart, months),
+    months_paid: months,
+  };
+}
 
-  const ms =
-    end.getTime() -
-    start.getTime();
+/* -------------------------------------------------------------------------- */
+/* Comparisons                                                                */
+/* -------------------------------------------------------------------------- */
+
+function daysBetween(startDate, endDate) {
+  const start = startOfDay(startDate);
+  const end = startOfDay(endDate);
 
   return Math.floor(
-    ms / (1000 * 60 * 60 * 24)
+    (end.getTime() - start.getTime()) / (1000 * 60 * 60 * 24)
   );
 }
 
-/* =========================================================
-   IS EXPIRED
-========================================================= */
+function isExpired(endDate, referenceDate = new Date()) {
+  const end = toDate(endDate);
+  if (!end) return false;
 
-function isExpired(
-  endDate
-) {
-
-  const end =
-    toDate(endDate);
-
-  if (!end) {
-    return false;
-  }
-
-  return end.getTime() <
-    Date.now();
+  return endOfDay(end).getTime() < startOfDay(referenceDate).getTime();
 }
 
-/* =========================================================
-   EXPORTS
-========================================================= */
+function isSameOrBefore(left, right) {
+  const leftDate = toDate(left);
+  const rightDate = toDate(right);
+
+  if (!leftDate || !rightDate) return false;
+
+  return leftDate.getTime() <= rightDate.getTime();
+}
+
+function isSameOrAfter(left, right) {
+  const leftDate = toDate(left);
+  const rightDate = toDate(right);
+
+  if (!leftDate || !rightDate) return false;
+
+  return leftDate.getTime() >= rightDate.getTime();
+}
 
 module.exports = {
-
   toDate,
+  ensureDate,
+  cloneDate,
 
   mysqlDateTime,
+  mysqlNow,
   mysqlDate,
+  dateOnly,
 
   addMonths,
   addDays,
 
+  startOfDay,
+  endOfDay,
   startOfMonth,
   endOfMonth,
+  startOfYear,
+  endOfYear,
 
   calculateCoverage,
   buildCoverageLabel,
+  coverageMonthKeys,
 
   daysBetween,
-
   isExpired,
+  isSameOrBefore,
+  isSameOrAfter,
 };

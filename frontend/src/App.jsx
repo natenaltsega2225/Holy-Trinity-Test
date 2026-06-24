@@ -22,6 +22,7 @@ import Register from "./components/Register";
 import ResetPassword from "./components/ResetPassword";
 import ForgotPassword from "./components/ForgotPassword";
 import ResetTempPassword from "./components/ResetTempPassword";
+import MfaVerify from "./components/MfaVerify";
 import Forms from "./components/Forms";
 import Payments from "./components/Payments";
 import CheckoutPage from "./components/Checkout";
@@ -104,7 +105,10 @@ function AppContent() {
             path="/login"
             element={<Login />}
           />
-
+<Route
+  path="/mfa-verify"
+  element={<MfaVerify />}
+/>
           <Route
             path="/register"
             element={<Register />}

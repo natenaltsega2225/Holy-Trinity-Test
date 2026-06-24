@@ -23,8 +23,9 @@ import {
 } from "lucide-react";
 
 import api from "../../../components/api";
-import "../../../styles/admin-certificates.css";
-
+// import "../../../styles/admin-certificates.css";
+import "../../../styles/admin-enterprise.css";
+import "../../../styles/admin-table.css";
 /* =========================================================
    CERTIFICATE TYPES
 ========================================================= */

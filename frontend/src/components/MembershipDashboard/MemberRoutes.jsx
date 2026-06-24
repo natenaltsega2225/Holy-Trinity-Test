@@ -1,466 +1,77 @@
-
-// // src/components/MembershipDashoard/MemberRoutes.jsx
-
-// import React from "react";
-// import {
-//   Routes,
-//   Route,
-//   Navigate,
-// } from "react-router-dom";
-
-// import MemberLayout from "./MemberLayout";
-
-
-// import DashboardProfile from "../../pages/DashboardProfile";
-
-// import MyPayments from "./pages/MyPayments";
-
-// import GivingStatements from "./pages/GivingStatements";
-// import FamilyDependents from "./pages/FamilyDependents";
-// import Documents from "./pages/Documents";
-// import MyRequests from "./pages/MyRequests";
-
-// import ReceiptViewPage from "../../pages/ReceiptViewPage";
-// import InvoiceViewPage from "../../pages/InvoiceViewPage";
-
-// /* =========================================================
-//    ENTERPRISE MEMBER ROUTES
-// ========================================================= */
-
-// export default function MemberRoutes() {
-
-//   return (
-
-//     <Routes>
-
-//       <Route element={<MemberLayout />}>
-
-//         {/* =================================================
-//             DEFAULT
-//         ================================================= */}
-
-//         <Route
-//           index
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/make-payment"
-//               replace
-//             />
-//           }
-//         />
-
-//         {/* =================================================
-//             PROFILE
-//         ================================================= */}
-
-//         <Route
-//           path="my-profile"
-//           element={<DashboardProfile />}
-//         />
-
-//         {/* =================================================
-//             PAYMENT CENTER
-//         ================================================= */}
-
-//         <Route
-//           path="my-payments"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/make-payment"
-//               replace
-//             />
-//           }
-//         />
-
-//         {/* =================================================
-//             ENTERPRISE CHILD TABS
-//         ================================================= */}
-
-//         <Route
-//           path="my-payments/:tab"
-//           element={<MyPayments />}
-//         />
-
-//         {/* =================================================
-//             LEGACY ROUTE REDIRECTS
-//             Keeps old bookmarks working
-//         ================================================= */}
-
-//         <Route
-//           path="ledger"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/ledger"
-//               replace
-//             />
-//           }
-//         />
-
-//         <Route
-//           path="invoices"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/invoices"
-//               replace
-//             />
-//           }
-//         />
-
-//         <Route
-//           path="renewal"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/renewal"
-//               replace
-//             />
-//           }
-//         />
-
-//         <Route
-//           path="payment-history"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/history"
-//               replace
-//             />
-//           }
-//         />
-
-//         {/* =================================================
-//             RECEIPTS
-//         ================================================= */}
-
-//         <Route
-//           path="receipts/:receiptNumber"
-//           element={<ReceiptViewPage />}
-//         />
-
-//         {/* =================================================
-//             INVOICES
-//         ================================================= */}
-
-//         <Route
-//           path="invoice/:invoiceNumber"
-//           element={<InvoiceViewPage />}
-//         />
-
-//         <Route
-//           path="invoices/:invoiceNumber"
-//           element={<InvoiceViewPage />}
-//         />
-
-//         {/* =================================================
-//             GIVING STATEMENTS
-//         ================================================= */}
-
-//         <Route
-//           path="giving-statements"
-//           element={<GivingStatements />}
-//         />
-
-//         {/* =================================================
-//             FAMILY / DEPENDENTS
-//         ================================================= */}
-
-//         <Route
-//           path="family"
-//           element={<FamilyDependents />}
-//         />
-
-//         {/* =================================================
-//             DOCUMENTS
-//         ================================================= */}
-
-//         <Route
-//           path="documents"
-//           element={<Documents />}
-//         />
-
-//         {/* =================================================
-//             REQUESTS
-//         ================================================= */}
-
-//         <Route
-//           path="myrequests"
-//           element={<MyRequests />}
-//         />
-
-//         <Route
-//           path="requests"
-//           element={<MyRequests />}
-//         />
-
-//         {/* =================================================
-//             FALLBACK
-//         ================================================= */}
-
-//         <Route
-//           path="*"
-//           element={
-//             <Navigate
-//               to="/dash/membership/my-payments/make-payment"
-//               replace
-//             />
-//           }
-//         />
-
-//       </Route>
-
-//     </Routes>
-//   );
-// }
-
-// src/components/MembershipDashboard/MemberRoutes.jsx
+// frontend/src/components/MembershipDashboard/MemberRoutes.jsx
 
 import React from "react";
+import { Navigate, Route, Routes } from "react-router-dom";
 
-import {
-  Routes,
-  Route,
-  Navigate,
-} from "react-router-dom";
+import MemberLayout from "./MemberLayout";
 
-import MemberLayout
-  from "./MemberLayout";
+import DashboardHome from "./pages/DashboardHome";
+import Documents from "./pages/Documents";
+import Donations from "./pages/Donations";
+import FamilyDependents from "./pages/FamilyDependents";
+// import GivingStatements from "./pages/GivingStatements";
+import InvoicesReceipts from "./pages/InvoicesReceipts";
+import MembershipRenewal from "./pages/MembershipRenewal";
+// import MyLedger from "./pages/MyLedger";
+import MyMembershipCoverage from "./pages/MyMembershipCoverage";
+import MyPayments from "./pages/MyPayments";
+import MyRequests from "./pages/MyRequests";
 
-/* =========================================
-   CORE PAGES
-========================================= */
-
-import DashboardProfile
-  from "../../pages/DashboardProfile";
-
-import ReceiptViewPage
-  from "../../pages/ReceiptViewPage";
-
-import InvoiceViewPage
-  from "../../pages/InvoiceViewPage";
-
-/* =========================================
-   MEMBER ENTERPRISE PAGES
-========================================= */
-
-import DashboardHome
-  from "./pages/DashboardHome";
-
-import MyPayments
-  from "./pages/MyPayments";
-
-import MyMembershipCoverage
-  from "./pages/MyMembershipCoverage";
-
-import GivingStatements
-  from "./pages/GivingStatements";
-
-import FamilyDependents
-  from "./pages/FamilyDependents";
-
-import Documents
-  from "./pages/Documents";
-
-import MyRequests
-  from "./pages/MyRequests";
-
-/* =========================================
-   MEMBER ROUTES
-========================================= */
+function MemberProfileFallback() {
+  return <DashboardHome />;
+}
 
 export default function MemberRoutes() {
-
   return (
-
     <Routes>
-
       <Route element={<MemberLayout />}>
+        <Route index element={<Navigate to="overview" replace />} />
 
-        {/* =====================================
-            DEFAULT
-        ===================================== */}
+        <Route path="overview" element={<DashboardHome />} />
 
-        <Route
-          index
-          element={
-            <Navigate
-              to="/dash/membership/overview"
-              replace
-            />
-          }
-        />
+        <Route path="my-payments">
+          <Route index element={<Navigate to="make-payment" replace />} />
+          <Route path="make-payment" element={<MyPayments />} />
+        </Route>
 
-        {/* =====================================
-            OVERVIEW
-        ===================================== */}
+        <Route path="payments" element={<MyPayments />} />
+        <Route path="make-payment" element={<MyPayments />} />
 
-        <Route
-          path="overview"
-          element={<DashboardHome />}
-        />
+        <Route path="membership-coverage" element={<MyMembershipCoverage />} />
+        <Route path="coverage" element={<MyMembershipCoverage />} />
 
-        {/* =====================================
-            PROFILE
-        ===================================== */}
+        <Route path="membership-renewal" element={<MembershipRenewal />} />
+        <Route path="renewal" element={<MembershipRenewal />} />
+        <Route path="auto-pay" element={<MembershipRenewal />} />
+        <Route path="subscription" element={<MembershipRenewal />} />
 
-        <Route
-          path="my-profile"
-          element={<DashboardProfile />}
-        />
+        <Route path="donations" element={<Donations />} />
+        <Route path="donate" element={<Donations />} />
 
-        {/* =====================================
-            PAYMENT CENTER
-        ===================================== */}
+        {/* <Route path="giving-statements" element={<GivingStatements />} />
+        <Route path="statements" element={<GivingStatements />} /> */}
 
-        <Route
-          path="my-payments"
-          element={
-            <Navigate
-              to="/dash/membership/my-payments/make-payment"
-              replace
-            />
-          }
-        />
+        {/* <Route path="my-ledger" element={<MyLedger />} />
+        <Route path="ledger" element={<MyLedger />} /> */}
 
-        {/* =====================================
-            ENTERPRISE PAYMENT TABS
-        ===================================== */}
+        <Route path="invoices-receipts" element={<InvoicesReceipts />} />
+        <Route path="invoices" element={<InvoicesReceipts />} />
+        <Route path="receipts" element={<InvoicesReceipts />} />
 
-        <Route
-          path="my-payments/:tab"
-          element={<MyPayments />}
-        />
+        <Route path="family" element={<FamilyDependents />} />
+        <Route path="family-dependents" element={<FamilyDependents />} />
 
-        {/* =====================================
-            MEMBERSHIP COVERAGE
-        ===================================== */}
+        <Route path="documents" element={<Documents />} />
 
-        <Route
-          path="membership-coverage"
-          element={<MyMembershipCoverage />}
-        />
+        <Route path="myrequests" element={<MyRequests />} />
+        <Route path="my-requests" element={<MyRequests />} />
+        <Route path="requests" element={<MyRequests />} />
 
-        {/* =====================================
-            LEGACY REDIRECTS
-        ===================================== */}
+        <Route path="my-profile" element={<MemberProfileFallback />} />
+        <Route path="profile" element={<MemberProfileFallback />} />
 
-        <Route
-          path="ledger"
-          element={
-            <Navigate
-              to="/dash/membership/my-payments/ledger"
-              replace
-            />
-          }
-        />
-
-        <Route
-          path="invoices"
-          element={
-            <Navigate
-              to="/dash/membership/my-payments/invoices"
-              replace
-            />
-          }
-        />
-
-        <Route
-          path="renewal"
-          element={
-            <Navigate
-              to="/dash/membership/my-payments/renewal"
-              replace
-            />
-          }
-        />
-
-        <Route
-          path="payment-history"
-          element={
-            <Navigate
-              to="/dash/membership/my-payments/history"
-              replace
-            />
-          }
-        />
-
-        {/* =====================================
-            RECEIPTS
-        ===================================== */}
-
-        <Route
-          path="receipts/:receiptNumber"
-          element={<ReceiptViewPage />}
-        />
-
-        {/* =====================================
-            INVOICES
-        ===================================== */}
-
-        <Route
-          path="invoice/:invoiceNumber"
-          element={<InvoiceViewPage />}
-        />
-
-        <Route
-          path="invoices/:invoiceNumber"
-          element={<InvoiceViewPage />}
-        />
-
-        {/* =====================================
-            GIVING STATEMENTS
-        ===================================== */}
-
-        <Route
-          path="giving-statements"
-          element={<GivingStatements />}
-        />
-
-        {/* =====================================
-            FAMILY
-        ===================================== */}
-
-        <Route
-          path="family"
-          element={<FamilyDependents />}
-        />
-
-        {/* =====================================
-            DOCUMENTS
-        ===================================== */}
-
-        <Route
-          path="documents"
-          element={<Documents />}
-        />
-
-        {/* =====================================
-            REQUESTS
-        ===================================== */}
-
-        <Route
-          path="myrequests"
-          element={<MyRequests />}
-        />
-
-        <Route
-          path="requests"
-          element={<MyRequests />}
-        />
-
-        {/* =====================================
-            FALLBACK
-        ===================================== */}
-
-        <Route
-          path="*"
-          element={
-            <Navigate
-              to="/dash/membership/overview"
-              replace
-            />
-          }
-        />
-
+        <Route path="*" element={<Navigate to="overview" replace />} />
       </Route>
-
     </Routes>
   );
 }

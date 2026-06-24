@@ -1,7 +1,7 @@
 //frontend\src\components\FinanceDashboard\pages\CheckManagement.jsx
 import React, { useMemo, useState } from "react";
 import FinanceTablePage from "../components/FinanceTablePage";
-
+import FinanceActionMenu from "../components/FinanceActionMenu"
 function fmtDate(value) {
   if (!value) return "--";
   const d = new Date(value);

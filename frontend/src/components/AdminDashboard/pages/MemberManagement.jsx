@@ -14,24 +14,9 @@ import api from "../../api";
 
 import AdminTablePage from "../components/AdminTablePage";
 
-import "../../../styles/admin-members-roles.css";
 
-const emptyMemberForm = {
-  first_name: "",
-  last_name: "",
-  email: "",
-  phone: "",
-  address_line1: "",
-  address_line2: "",
-  city: "",
-  state: "",
-  zip: "",
-  member_type: "existing",
-  status: "active",
-  membership_status: "active",
-  is_active: 1,
-};
-
+import "../../../styles/admin-enterprise.css";
+import "../../../styles/admin-table.css";
 function ActionMenu({ items = [] }) {
   const [open, setOpen] = useState(false);
 
@@ -168,21 +153,21 @@ export default function MemberManagement() {
       text: "",
     });
 
-  const [
-    memberModalOpen,
-    setMemberModalOpen,
-  ] = useState(false);
+  // const [
+  //   memberModalOpen,
+  //   setMemberModalOpen,
+  // ] = useState(false);
 
-  const [memberForm, setMemberForm] =
-    useState(emptyMemberForm);
+  // const [memberForm, setMemberForm] =
+  //   useState(emptyMemberForm);
 
-  const [
-    editingMemberId,
-    setEditingMemberId,
-  ] = useState(null);
+  // const [
+  //   editingMemberId,
+  //   setEditingMemberId,
+  // ] = useState(null);
 
-  const [savingMember, setSavingMember] =
-    useState(false);
+  // const [savingMember, setSavingMember] =
+  //   useState(false);
 
   const [
     resettingPassword,
@@ -229,101 +214,7 @@ export default function MemberManagement() {
     );
   }
 
-  function resetMemberModal() {
-    setEditingMemberId(null);
-
-    setMemberForm(
-      emptyMemberForm
-    );
-
-    setMemberModalOpen(false);
-  }
-
-  async function handleSaveMember() {
-    try {
-      setSavingMember(true);
-
-      setBanner({
-        type: "",
-        text: "",
-      });
-
-      if (editingMemberId) {
-        const { data } =
-          await api.put(
-            `/finance/members/${editingMemberId}`,
-            memberForm
-          );
-
-        setBanner({
-          type: "success",
-          text:
-            data?.message ||
-            "Member updated successfully.",
-        });
-      } else {
-        const { data } =
-          await api.post(
-            "/finance/members",
-            memberForm
-          );
-
-        setBanner({
-          type: "success",
-          text:
-            data?.message ||
-            "Member created successfully.",
-        });
-      }
-
-      resetMemberModal();
-    } catch (err) {
-      console.error(err);
-
-      setBanner({
-        type: "error",
-        text:
-          err?.response?.data?.error ||
-          "Failed to save member.",
-      });
-    } finally {
-      setSavingMember(false);
-    }
-  }
-
-  async function handleDeleteMember(
-    row
-  ) {
-    const confirmed =
-      window.confirm(
-        `Delete member "${row.full_name}"?`
-      );
-
-    if (!confirmed) return;
-
-    try {
-      const { data } =
-        await api.delete(
-          `/admin/users/${row.id}`
-        );
-
-      setBanner({
-        type: "success",
-        text:
-          data?.message ||
-          "Member deleted successfully.",
-      });
-    } catch (err) {
-      console.error(err);
-
-      setBanner({
-        type: "error",
-        text:
-          err?.response?.data?.error ||
-          "Failed to delete member.",
-      });
-    }
-  }
+ 
 
   async function handleResetPassword(
     row
@@ -368,163 +259,179 @@ export default function MemberManagement() {
       setResettingPassword(false);
     }
   }
+async function toggleMemberStatus(
+  row
+) {
+  try {
+    const active =
+      Number(row.is_active) === 1;
 
-  const columns = [
-    {
-      key: "member_no",
-      label: "Member No",
-    },
+    const { data } =
+      await api.patch(
+        `/admin/users/${row.id}/status`,
+        {
+          is_active:
+            active ? 0 : 1,
+        }
+      );
 
-    {
-      key: "full_name",
-      label: "Full Name",
-    },
+    setBanner({
+      type: "success",
+      text:
+        data?.message ||
+        "Account status updated.",
+    });
+  } catch (err) {
+    console.error(err);
 
-    {
-      key: "email",
-      label: "Email",
-    },
+    setBanner({
+      type: "error",
+      text:
+        err?.response?.data?.error ||
+        "Failed to update account status.",
+    });
+  }
+}
+const columns = [
+  {
+    key: "member_no",
+    label: "Member No",
+  },
 
-    {
-      key: "phone",
-      label: "Phone",
-    },
+  {
+    key: "full_name",
+    label: "Full Name",
+  },
 
-    {
-      key: "membership_status",
-      label: "Membership Status",
+  {
+    key: "email",
+    label: "Email",
+  },
 
-      render: (
-        value,
-        row,
-        helpers
-      ) => (
-        <helpers.AdminStatusBadge
-          status={String(
-            value ??
-              row.membership_status ??
-              "--"
-          )}
+  {
+    key: "role",
+    label: "Role",
+
+    render: (value) =>
+      value || "Member",
+  },
+
+  {
+    key: "is_active",
+    label: "Account Status",
+
+    render: (value, row, helpers) => (
+      <helpers.AdminStatusBadge
+        status={
+          Number(value)
+            ? "Active"
+            : "Disabled"
+        }
+      />
+    ),
+  },
+
+  {
+    key: "phone",
+    label: "Phone",
+  },
+
+  {
+    key: "membership_status",
+    label: "Membership Status",
+
+    render: (
+      value,
+      row,
+      helpers
+    ) => (
+      <helpers.AdminStatusBadge
+        status={String(
+          value ??
+            row.membership_status ??
+            "--"
+        )}
+      />
+    ),
+  },
+
+  {
+    key: "last_login",
+    label: "Last Login",
+
+    render: (value) =>
+      value
+        ? new Date(
+            value
+          ).toLocaleDateString()
+        : "--",
+  },
+
+  {
+    key: "actions",
+
+    label: "Actions",
+
+    render: (_, row) => (
+      <div
+        style={{
+          display: "flex",
+          justifyContent:
+            "flex-end",
+        }}
+      >
+        <ActionMenu
+          items={[
+            {
+              label: "Documents",
+
+              onClick: () =>
+                openMemberDocuments(
+                  row.id
+                ),
+            },
+
+            {
+              label:
+                resettingPassword
+                  ? "Sending Reset..."
+                  : "Reset Password",
+
+              onClick: () =>
+                handleResetPassword(
+                  row
+                ),
+            },
+
+            {
+              label:
+                Number(
+                  row.is_active
+                )
+                  ? "Deactivate Account"
+                  : "Activate Account",
+
+              onClick: () =>
+                toggleMemberStatus(
+                  row
+                ),
+            },
+
+            {
+              label:
+                "View Audit History",
+
+              onClick: () =>
+                navigate(
+                  `/dash/admin/member-audit/${row.id}`
+                ),
+            },
+          ]}
         />
-      ),
-    },
-
-    {
-      key: "actions",
-
-      label: "Actions",
-
-      render: (_, row) => (
-        <div
-          style={{
-            display: "flex",
-            justifyContent:
-              "flex-end",
-          }}
-        >
-          <ActionMenu
-            items={[
-              {
-                label: "Documents",
-
-                onClick: () =>
-                  openMemberDocuments(
-                    row.id
-                  ),
-              },
-
-              {
-                label:
-                  resettingPassword
-                    ? "Sending Reset..."
-                    : "Reset Password",
-
-                onClick: () =>
-                  handleResetPassword(
-                    row
-                  ),
-              },
-
-              {
-                label: "Edit",
-
-                onClick: () => {
-                  setEditingMemberId(
-                    row.id
-                  );
-
-                  setMemberForm({
-                    first_name:
-                      row.first_name ||
-                      "",
-
-                    last_name:
-                      row.last_name ||
-                      "",
-
-                    email:
-                      row.email || "",
-
-                    phone:
-                      row.phone || "",
-
-                    address_line1:
-                      row.address_line1 ||
-                      "",
-
-                    address_line2:
-                      row.address_line2 ||
-                      "",
-
-                    city:
-                      row.city || "",
-
-                    state:
-                      row.state || "",
-
-                    zip:
-                      row.zip || "",
-
-                    member_type:
-                      row.member_type ||
-                      "existing",
-
-                    status:
-                      row.status ||
-                      "active",
-
-                    membership_status:
-                      row.membership_status ||
-                      "active",
-
-                    is_active:
-                      Number(
-                        row.is_active || 0
-                      ),
-                  });
-
-                  setMemberModalOpen(
-                    true
-                  );
-                },
-              },
-
-              {
-                label: "Delete",
-
-                danger: true,
-
-                onClick: () =>
-                  handleDeleteMember(
-                    row
-                  ),
-              },
-            ]}
-          />
-        </div>
-      ),
-    },
-  ];
+      </div>
+    ),
+  },
+];
 
   return (
     <div className="mr-page">
@@ -542,8 +449,9 @@ export default function MemberManagement() {
       ) : null}
 
       <AdminTablePage
-        title="Member Management"
-        subtitle="Create, manage, reset passwords, and maintain linked church member accounts."
+      title="Member Accounts"
+
+subtitle="View member accounts, manage access, reset passwords, review documents, and monitor account activity. Member registration and profile maintenance are managed by the Finance Department."
         endpoint="/admin/users"
         pageSize={10}
         extraFilters={
@@ -551,288 +459,13 @@ export default function MemberManagement() {
         }
         searchPlaceholder="Search by member number, member name, email, phone, or location..."
         columns={columns}
-        actions={[
-          {
-            label: "Add Member",
-
-            variant: "primary",
-
-            onClick: () => {
-              setEditingMemberId(
-                null
-              );
-
-              setMemberForm(
-                emptyMemberForm
-              );
-
-              setMemberModalOpen(
-                true
-              );
-            },
-          },
-        ]}
+actions={[]}
+        
         emptyTitle="No member records found"
-        emptyMessage="Members will appear here after registration or finance creation."
+       emptyMessage="No member accounts found. Member registrations are managed by the Finance Department."
       />
 
-      <Modal
-        open={memberModalOpen}
-        title={
-          editingMemberId
-            ? "Edit Member"
-            : "Add Member"
-        }
-        onClose={
-          resetMemberModal
-        }
-      >
-        <div
-          style={{
-            display: "grid",
-            gridTemplateColumns:
-              "repeat(2, minmax(0, 1fr))",
-            gap: 14,
-          }}
-        >
-          <Field label="First Name">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.first_name
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    first_name:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Last Name">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.last_name
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    last_name:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Email">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.email
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    email:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Phone">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.phone
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    phone:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Address Line 1">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.address_line1
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    address_line1:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Address Line 2">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.address_line2
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    address_line2:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="City">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.city
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    city:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="State">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.state
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    state:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="ZIP">
-            <input
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.zip
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    zip:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-          </Field>
-
-          <Field label="Member Type">
-            <select
-              style={
-                inputStyle()
-              }
-              value={
-                memberForm.member_type
-              }
-              onChange={(e) =>
-                setMemberForm(
-                  (prev) => ({
-                    ...prev,
-                    member_type:
-                      e.target.value,
-                  })
-                )
-              }
-            >
-              <option value="existing">
-                Existing
-              </option>
-
-              <option value="new">
-                New
-              </option>
-            </select>
-          </Field>
-        </div>
-
-        <div className="mr-form-actions">
-          <button
-            type="button"
-            className="mr-btn mr-btn-secondary"
-            onClick={
-              resetMemberModal
-            }
-          >
-            Cancel
-          </button>
-
-          <button
-            type="button"
-            className="mr-btn mr-btn-primary"
-            onClick={
-              handleSaveMember
-            }
-            disabled={
-              savingMember
-            }
-          >
-            {savingMember
-              ? "Saving..."
-              : editingMemberId
-              ? "Update Member"
-              : "Create Member"}
-          </button>
-        </div>
-      </Modal>
+      
     </div>
   );
 }

@@ -1,313 +1,294 @@
 // backend/utils/dbHelpers.js
 "use strict";
 
-/*
-=========================================================
- ENTERPRISE DB HELPERS
----------------------------------------------------------
- Centralized reusable DB utilities
-=========================================================
-*/
+/* -------------------------------------------------------------------------- */
+/* Identifier Safety                                                          */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   HELPERS
-========================================================= */
+const columnCache = new Map();
 
-function cleanObject(
-  payload = {}
-) {
-
+function cleanObject(payload = {}) {
   return Object.fromEntries(
-
-    Object.entries(payload)
-      .filter(
-
-        ([, value]) =>
-
-          value !== undefined
-      )
+    Object.entries(payload).filter(([, value]) => value !== undefined)
   );
 }
 
-/* =========================================================
-   INSERT EXISTING COLUMNS
-========================================================= */
+function assertIdentifier(value, label = "identifier") {
+  const text = String(value || "").trim();
 
-async function insertExistingColumns(
-  conn,
-  table,
-  payload = {}
-) {
+  if (!/^[A-Za-z0-9_]+$/.test(text)) {
+    throw new Error(`Invalid SQL ${label}: ${text}`);
+  }
+
+  return text;
+}
+
+function quoteIdentifier(value) {
+  return `\`${assertIdentifier(value)}\``;
+}
+
+function cacheKey(table) {
+  return assertIdentifier(table, "table");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Columns                                                                    */
+/* -------------------------------------------------------------------------- */
+
+async function getTableColumns(conn, table) {
+  const key = cacheKey(table);
+
+  if (columnCache.has(key)) {
+    return columnCache.get(key);
+  }
+
+  const [columns] = await conn.query(`SHOW COLUMNS FROM ${quoteIdentifier(key)}`);
+
+  const set = new Set(columns.map((column) => column.Field));
+  columnCache.set(key, set);
+
+  return set;
+}
+
+function clearColumnCache(table = null) {
+  if (table) {
+    columnCache.delete(cacheKey(table));
+    return;
+  }
+
+  columnCache.clear();
+}
+
+async function filterExistingColumns(conn, table, payload = {}) {
   const data = cleanObject(payload);
+  const columns = await getTableColumns(conn, table);
 
-  /* =========================================
-     LOAD REAL TABLE COLUMNS
-  ========================================= */
-
-  const [columns] = await conn.query(`
-    SHOW COLUMNS FROM ${table}
-  `);
-
-  const allowedColumns = new Set(
-    columns.map((c) => c.Field)
+  return Object.fromEntries(
+    Object.entries(data).filter(([key]) => columns.has(key))
   );
+}
 
-  /* =========================================
-     FILTER ONLY VALID COLUMNS
-  ========================================= */
+async function hasColumn(conn, table, column) {
+  const columns = await getTableColumns(conn, table);
+  return columns.has(column);
+}
 
-  const filteredData = Object.fromEntries(
-    Object.entries(data).filter(
-      ([key]) => allowedColumns.has(key)
-    )
-  );
+/* -------------------------------------------------------------------------- */
+/* Insert / Update                                                            */
+/* -------------------------------------------------------------------------- */
 
+async function insertExistingColumns(conn, table, payload = {}) {
+  const tableName = assertIdentifier(table, "table");
+  const filteredData = await filterExistingColumns(conn, tableName, payload);
   const keys = Object.keys(filteredData);
 
   if (!keys.length) {
-    throw new Error(
-      `insertExistingColumns(${table}) empty payload`
-    );
+    throw new Error(`insertExistingColumns(${tableName}) empty payload`);
   }
 
-  /* =========================================
-     BUILD INSERT
-  ========================================= */
-
-  const placeholders = keys
-    .map(() => "?")
-    .join(", ");
-
   const sql = `
-    INSERT INTO ${table}
-    (${keys.join(", ")})
-    VALUES (${placeholders})
+    INSERT INTO ${quoteIdentifier(tableName)}
+    (${keys.map(quoteIdentifier).join(", ")})
+    VALUES (${keys.map(() => "?").join(", ")})
   `;
 
-  const values = keys.map(
-    (k) => filteredData[k]
-  );
+  const values = keys.map((key) => filteredData[key]);
 
-  /* =========================================
-     DEBUG LOGGING
-  ========================================= */
+  if (process.env.DEBUG_DB_HELPERS === "true") {
+    console.log("DB INSERT", {
+      table: tableName,
+      keys,
+    });
+  }
 
-  console.log(
-    `DB INSERT -> ${table}`
-  );
-
-  console.log({
-    keys,
-  });
-
-  /* =========================================
-     EXECUTE
-  ========================================= */
-
-  const [result] = await conn.query(
-    sql,
-    values
-  );
+  const [result] = await conn.query(sql, values);
 
   return result.insertId;
 }
-/* =========================================================
-   UPDATE EXISTING COLUMNS
-========================================================= */
 
 async function updateExistingColumns(
-
   conn,
-
   table,
-
   payload = {},
-
   whereClause = "",
-
   whereParams = []
 ) {
-
-  const data =
-    cleanObject(payload);
-
-  const keys =
-    Object.keys(data);
+  const tableName = assertIdentifier(table, "table");
+  const filteredData = await filterExistingColumns(conn, tableName, payload);
+  const keys = Object.keys(filteredData);
 
   if (!keys.length) {
-
     return 0;
   }
 
   if (!whereClause) {
-
-    throw new Error(
-      `updateExistingColumns(${table}) missing where clause`
-    );
+    throw new Error(`updateExistingColumns(${tableName}) missing where clause`);
   }
 
-  const setSql =
-    keys
-      .map(
-        (key) => `${key} = ?`
-      )
-      .join(", ");
+  const setSql = keys.map((key) => `${quoteIdentifier(key)} = ?`).join(", ");
 
   const sql = `
-    UPDATE ${table}
+    UPDATE ${quoteIdentifier(tableName)}
     SET ${setSql}
     WHERE ${whereClause}
   `;
 
   const values = [
-
-    ...keys.map(
-      (k) => data[k]
-    ),
-
+    ...keys.map((key) => filteredData[key]),
     ...whereParams,
   ];
 
-  const [result] =
-    await conn.query(
-      sql,
-      values
-    );
+  const [result] = await conn.query(sql, values);
 
   return result.affectedRows;
 }
 
-/* =========================================================
-   FIND ONE
-========================================================= */
-
-async function findOne(
-
+async function upsertExistingColumns(
   conn,
-
-  sql,
-
-  params = []
+  table,
+  payload = {},
+  updatePayload = null
 ) {
+  const tableName = assertIdentifier(table, "table");
+  const insertData = await filterExistingColumns(conn, tableName, payload);
+  const insertKeys = Object.keys(insertData);
 
-  const [rows] =
-    await conn.query(
-      sql,
-      params
-    );
+  if (!insertKeys.length) {
+    throw new Error(`upsertExistingColumns(${tableName}) empty payload`);
+  }
 
+  const updateData = await filterExistingColumns(
+    conn,
+    tableName,
+    updatePayload || payload
+  );
+
+  const updateKeys = Object.keys(updateData).filter((key) => key !== "id");
+
+  const sql = `
+    INSERT INTO ${quoteIdentifier(tableName)}
+    (${insertKeys.map(quoteIdentifier).join(", ")})
+    VALUES (${insertKeys.map(() => "?").join(", ")})
+    ON DUPLICATE KEY UPDATE
+    ${
+      updateKeys.length
+        ? updateKeys
+            .map((key) => `${quoteIdentifier(key)} = VALUES(${quoteIdentifier(key)})`)
+            .join(", ")
+        : `${quoteIdentifier(insertKeys[0])} = ${quoteIdentifier(insertKeys[0])}`
+    }
+  `;
+
+  const [result] = await conn.query(
+    sql,
+    insertKeys.map((key) => insertData[key])
+  );
+
+  return result.insertId || result.affectedRows;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Query Helpers                                                              */
+/* -------------------------------------------------------------------------- */
+
+async function findOne(conn, sql, params = []) {
+  const [rows] = await conn.query(sql, params);
   return rows[0] || null;
 }
 
-/* =========================================================
-   FIND MANY
-========================================================= */
-
-async function findMany(
-
-  conn,
-
-  sql,
-
-  params = []
-) {
-
-  const [rows] =
-    await conn.query(
-      sql,
-      params
-    );
-
+async function findMany(conn, sql, params = []) {
+  const [rows] = await conn.query(sql, params);
   return rows;
 }
 
-/* =========================================================
-   EXISTS
-========================================================= */
-
-async function exists(
-
-  conn,
-
-  sql,
-
-  params = []
-) {
-
-  const row =
-    await findOne(
-      conn,
-      sql,
-      params
-    );
-
-  return !!row;
+async function exists(conn, sql, params = []) {
+  const row = await findOne(conn, sql, params);
+  return Boolean(row);
 }
 
-/* =========================================================
-   PAGINATION
-========================================================= */
+async function countRows(conn, sql, params = []) {
+  const row = await findOne(conn, sql, params);
+  return Number(row?.total || row?.count || 0);
+}
 
-function buildPagination({
+/* -------------------------------------------------------------------------- */
+/* Transactions                                                               */
+/* -------------------------------------------------------------------------- */
 
-  page = 1,
+async function withTransaction(pool, callback) {
+  const conn = await pool.getConnection();
 
-  limit = 25,
+  try {
+    await conn.beginTransaction();
 
-  total = 0,
-}) {
+    const result = await callback(conn);
 
-  const safePage =
-    Math.max(
-      1,
-      Number(page || 1)
-    );
+    await conn.commit();
 
-  const safeLimit =
-    Math.max(
-      1,
-      Number(limit || 25)
-    );
+    return result;
+  } catch (err) {
+    try {
+      await conn.rollback();
+    } catch (rollbackErr) {
+      console.error("Transaction rollback failed:", rollbackErr);
+    }
+
+    throw err;
+  } finally {
+    conn.release();
+  }
+}
+
+/* -------------------------------------------------------------------------- */
+/* Pagination                                                                 */
+/* -------------------------------------------------------------------------- */
+
+function buildPagination({ page = 1, limit = 25, total = 0 } = {}) {
+  const safePage = Math.max(1, Number(page || 1));
+  const safeLimit = Math.min(500, Math.max(1, Number(limit || 25)));
+  const safeTotal = Number(total || 0);
 
   return {
-
-    page:
-      safePage,
-
-    limit:
-      safeLimit,
-
-    total:
-      Number(total || 0),
-
-    pages:
-      Math.ceil(
-        Number(total || 0) /
-        safeLimit
-      ),
-
-    offset:
-      (safePage - 1) *
-      safeLimit,
+    page: safePage,
+    limit: safeLimit,
+    total: safeTotal,
+    pages: Math.ceil(safeTotal / safeLimit),
+    offset: (safePage - 1) * safeLimit,
   };
 }
 
-/* =========================================================
-   EXPORTS
-========================================================= */
+function limitOffsetSql(pagination = {}) {
+  const limit = Math.min(500, Math.max(1, Number(pagination.limit || 25)));
+  const offset = Math.max(0, Number(pagination.offset || 0));
+
+  return {
+    sql: " LIMIT ? OFFSET ? ",
+    params: [limit, offset],
+  };
+}
 
 module.exports = {
-
   cleanObject,
 
-  insertExistingColumns,
+  assertIdentifier,
+  quoteIdentifier,
 
+  getTableColumns,
+  clearColumnCache,
+  filterExistingColumns,
+  hasColumn,
+
+  insertExistingColumns,
   updateExistingColumns,
+  upsertExistingColumns,
 
   findOne,
   findMany,
-
   exists,
+  countRows,
+
+  withTransaction,
 
   buildPagination,
+  limitOffsetSql,
 };

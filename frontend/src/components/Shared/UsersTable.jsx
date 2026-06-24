@@ -2,8 +2,9 @@
 // // src/components/Shared/UsersTable.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../api";
-import "../../styles/admin-members-roles.css";
-
+// import "../../styles/admin-members-roles.css";
+import "../../styles/admin-enterprise.css";
+import "../../styles/admin-table.css";
 function clean(value) {
   return String(value || "").trim();
 }
@@ -418,6 +419,7 @@ export default function UsersTable({
     }
   }
 
+
   function openRoleEditor(row) {
     setEditingRoleRow(row);
     setEditRole(String(row.role || "finance").toLowerCase());
@@ -430,34 +432,46 @@ export default function UsersTable({
     setEditActive(true);
   }
 
-  async function saveRoleEditor(e) {
-    e.preventDefault();
-    if (!editingRoleRow) return;
+async function saveRoleEditor(e) {
+  e.preventDefault();
 
-    setSaving(true);
-    setError("");
-    setBanner("");
+  if (!editingRoleRow) return;
 
-    try {
-      await api.patch(`/admin/accounts/${editingRoleRow.id}/role`, {
+  setSaving(true);
+  setError("");
+  setBanner("");
+
+  try {
+    await api.patch(
+      `/admin/access-users/${editingRoleRow.id}/role`,
+      {
         role: editRole,
-      });
+      }
+    );
 
-      await api.patch(`/admin/accounts/${editingRoleRow.id}/status`, {
+    await api.patch(
+      `/admin/access-users/${editingRoleRow.id}/status`,
+      {
         is_active: editActive ? 1 : 0,
-      });
+      }
+    );
 
-      setBanner("Linked account updated successfully.");
-      closeRoleEditor();
-      await loadRows();
-    } catch (err) {
-      console.error(err);
-      setError(err?.response?.data?.error || "Failed to update access role.");
-    } finally {
-      setSaving(false);
-    }
+    setBanner("Linked account updated successfully.");
+
+    closeRoleEditor();
+
+    await loadRows();
+  } catch (err) {
+    console.error(err);
+
+    setError(
+      err?.response?.data?.error ||
+      "Failed to update access role."
+    );
+  } finally {
+    setSaving(false);
   }
-
+}
   function openResetPassword(row) {
     setResetRow(row);
     setResetPassword("");
@@ -471,39 +485,45 @@ export default function UsersTable({
   }
 
   async function submitResetPassword(e) {
-    e.preventDefault();
-    if (!resetRow) return;
+  e.preventDefault();
 
-    setSaving(true);
-    setError("");
-    setBanner("");
+  if (!resetRow) return;
 
-    try {
-      const payload = {
-        password: clean(resetPassword),
-        auto_generate_password: resetAutoGenerate,
-      };
+  setSaving(true);
+  setError("");
+  setBanner("");
 
-      const { data } = await api.patch(
-        `/admin/accounts/${resetRow.id}/reset-password`,
-        payload
-      );
+  try {
+    const payload = {
+      password: clean(resetPassword),
+      auto_generate_password: resetAutoGenerate,
+    };
 
-      setBanner(
-        data?.temp_password
-          ? `Password reset complete. Temporary password: ${data.temp_password}`
-          : "Password reset successfully."
-      );
+    const { data } = await api.patch(
+      `/admin/access-users/${resetRow.id}/reset-password`,
+      payload
+    );
 
-      closeResetPassword();
-      await loadRows();
-    } catch (err) {
-      console.error(err);
-      setError(err?.response?.data?.error || "Failed to reset password.");
-    } finally {
-      setSaving(false);
-    }
+    setBanner(
+      data?.temp_password
+        ? `Password reset complete. Temporary password: ${data.temp_password}`
+        : "Password reset successfully."
+    );
+
+    closeResetPassword();
+
+    await loadRows();
+  } catch (err) {
+    console.error(err);
+
+    setError(
+      err?.response?.data?.error ||
+      "Failed to reset password."
+    );
+  } finally {
+    setSaving(false);
   }
+}
 
   async function deleteRow(row) {
     const ok = window.confirm(
@@ -628,150 +648,286 @@ export default function UsersTable({
         </div>
       </div>
 
-      <div className="mr-table-wrap">
-        <div className="mr-table-scroll">
-          <table className={`mr-table ${stickyHeader ? "mr-sticky" : ""}`}>
-            <thead>
-              <tr>
-                {isRolesMode ? (
-                  <>
-                    <th>Member</th>
-                    <th>Username</th>
-                    <th>Email</th>
-                    <th>Role</th>
-                    <th>Active</th>
-                    <th>Must Change Password</th>
-                    <th>Created</th>
-                    <th style={{ textAlign: "right" }}>Action</th>
-                  </>
-                ) : (
-                  <>
-                    <th>Member No</th>
-                    <th>Full Name</th>
-                    <th>Email</th>
-                    <th>Phone</th>
-                    {showAddress && <th>Address</th>}
-                    <th>Status</th>
-                    <th>Membership</th>
-                    <th>Linked Accounts</th>
-                    <th style={{ textAlign: "right" }}>Action</th>
-                  </>
-                )}
-              </tr>
-            </thead>
 
-            <tbody>
-              {loading ? (
-                <tr>
-                  <td colSpan={isRolesMode ? 8 : showAddress ? 9 : 8}>
-                    Loading...
-                  </td>
-                </tr>
-              ) : rows.length === 0 ? (
-                <tr>
-                  <td colSpan={isRolesMode ? 8 : showAddress ? 9 : 8}>
-                    No records found.
-                  </td>
-                </tr>
-              ) : (
-                rows.map((row) =>
-                  isRolesMode ? (
-                    <tr key={row.id}>
-                      <td>
-                        <div>{row.member_no || "--"}</div>
-                        <div className="mr-muted">
-                          {row.member_full_name || row.full_name || "--"}
-                        </div>
-                      </td>
-                      <td>{row.username || "--"}</td>
-                      <td>{row.email || "--"}</td>
-                      <td>
-                        <span className={roleBadgeClass(row.role)}>
-                          {formatRoleLabel(row.role)}
-                        </span>
-                      </td>
-                      <td>
-                        <span
-                          className={`mr-status-pill ${
-                            Number(row.is_active) === 1 ? "active" : "inactive"
-                          }`}
-                        >
-                          {yesNo(row.is_active)}
-                        </span>
-                      </td>
-                      <td>{yesNo(row.must_change_password)}</td>
-                      <td>{fmtDate(row.created_at)}</td>
-                      <td>
-                        <div className="mr-actions-cell">
-                          <ActionMenu
-                            items={[
-                              ...(canEditRole
-                                ? [
-                                    {
-                                      label: "Edit Access",
-                                      onClick: () => openRoleEditor(row),
-                                    },
-                                    {
-                                      label: "Reset Password",
-                                      onClick: () => openResetPassword(row),
-                                    },
-                                  ]
-                                : []),
-                              ...(canDelete
-                                ? [
-                                    {
-                                      label: "Delete",
-                                      danger: true,
-                                      onClick: () => deleteRow(row),
-                                    },
-                                  ]
-                                : []),
-                            ]}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  ) : (
-                    <tr key={row.id}>
-                      <td>{row.member_no || "--"}</td>
-                      <td>{row.full_name || "--"}</td>
-                      <td>{row.email || "--"}</td>
-                      <td>{row.phone || "--"}</td>
-                      {showAddress && (
-                        <td>
-                          {[row.address_line1, row.city, row.state, row.zip]
-                            .filter(Boolean)
-                            .join(", ") || "--"}
-                        </td>
-                      )}
-                      <td>{row.status || "--"}</td>
-                      <td>{row.membership_status || "--"}</td>
-                      <td>{row.linked_accounts_count ?? 0}</td>
-                      <td>
-                        <div className="mr-actions-cell">
-                          <ActionMenu
-                            items={[
-                              ...(canDelete
-                                ? [
-                                    {
-                                      label: "Delete",
-                                      danger: true,
-                                      onClick: () => deleteRow(row),
-                                    },
-                                  ]
-                                : []),
-                            ]}
-                          />
-                        </div>
-                      </td>
-                    </tr>
-                  )
-                )
+<div className="mr-table-wrap">
+  <div className="mr-table-scroll">
+    <table
+      className={`mr-table ${
+        stickyHeader ? "mr-sticky" : ""
+      }`}
+    >
+      <thead>
+        <tr>
+          {isRolesMode ? (
+            <>
+              <th>Member ID</th>
+              <th>Member Name</th>
+              <th>Username</th>
+              <th>Email</th>
+              <th>Role</th>
+              <th>Active</th>
+              <th>Password Change</th>
+              <th>Created</th>
+              <th style={{ textAlign: "right" }}>
+                Actions
+              </th>
+            </>
+          ) : (
+            <>
+              <th>Member No</th>
+              <th>Full Name</th>
+              <th>Email</th>
+              <th>Phone</th>
+
+              {showAddress && (
+                <th>Address</th>
               )}
-            </tbody>
-          </table>
-        </div>
-      </div>
+
+              <th>Status</th>
+              <th>Membership</th>
+              <th>Linked Accounts</th>
+
+              <th
+                style={{
+                  textAlign: "right",
+                }}
+              >
+                Actions
+              </th>
+            </>
+          )}
+        </tr>
+      </thead>
+
+      <tbody>
+        {loading ? (
+          <tr>
+            <td
+              colSpan={
+                isRolesMode
+                  ? 9
+                  : showAddress
+                  ? 9
+                  : 8
+              }
+              className="mr-empty-cell"
+            >
+              Loading...
+            </td>
+          </tr>
+        ) : rows.length === 0 ? (
+          <tr>
+            <td
+              colSpan={
+                isRolesMode
+                  ? 9
+                  : showAddress
+                  ? 9
+                  : 8
+              }
+              className="mr-empty-cell"
+            >
+              No records found.
+            </td>
+          </tr>
+        ) : (
+          rows.map((row) =>
+            isRolesMode ? (
+              <tr key={row.id}>
+                {/* Member ID */}
+                <td className="mr-member-id">
+                  {row.member_no || "--"}
+                </td>
+
+                {/* Member Name */}
+                <td className="mr-member-name">
+                  {row.member_full_name ||
+                    row.full_name ||
+                    "--"}
+                </td>
+
+                {/* Username */}
+                <td>
+                  {row.username || "--"}
+                </td>
+
+                {/* Email */}
+                <td className="mr-email-cell">
+                  {row.email || "--"}
+                </td>
+
+                {/* Role */}
+                <td>
+                  <span
+                    className={roleBadgeClass(
+                      row.role
+                    )}
+                  >
+                    {formatRoleLabel(
+                      row.role
+                    )}
+                  </span>
+                </td>
+
+                {/* Active */}
+                <td>
+                  <span
+                    className={`mr-status-pill ${
+                      Number(
+                        row.is_active
+                      ) === 1
+                        ? "active"
+                        : "inactive"
+                    }`}
+                  >
+                    {yesNo(
+                      row.is_active
+                    )}
+                  </span>
+                </td>
+
+                {/* Must Change Password */}
+                <td>
+                  {yesNo(
+                    row.must_change_password
+                  )}
+                </td>
+
+                {/* Created */}
+                <td>
+                  {fmtDate(
+                    row.created_at
+                  )}
+                </td>
+
+                {/* Actions */}
+                <td>
+                  <div className="mr-actions-cell">
+                    <ActionMenu
+                      items={[
+                        ...(canEditRole
+                          ? [
+                              {
+                                label:
+                                  "Edit Access",
+                                onClick:
+                                  () =>
+                                    openRoleEditor(
+                                      row
+                                    ),
+                              },
+                              {
+                                label:
+                                  "Reset Password",
+                                onClick:
+                                  () =>
+                                    openResetPassword(
+                                      row
+                                    ),
+                              },
+                            ]
+                          : []),
+
+                        ...(canDelete
+                          ? [
+                              {
+                                label:
+                                  "Delete",
+                                danger: true,
+                                onClick:
+                                  () =>
+                                    deleteRow(
+                                      row
+                                    ),
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </div>
+                </td>
+              </tr>
+            ) : (
+              <tr key={row.id}>
+                <td>
+                  {row.member_no ||
+                    "--"}
+                </td>
+
+                <td>
+                  {row.full_name ||
+                    "--"}
+                </td>
+
+                <td>
+                  {row.email ||
+                    "--"}
+                </td>
+
+                <td>
+                  {row.phone ||
+                    "--"}
+                </td>
+
+                {showAddress && (
+                  <td>
+                    {[
+                      row.address_line1,
+                      row.city,
+                      row.state,
+                      row.zip,
+                    ]
+                      .filter(Boolean)
+                      .join(", ") ||
+                      "--"}
+                  </td>
+                )}
+
+                <td>
+                  {row.status ||
+                    "--"}
+                </td>
+
+                <td>
+                  {row.membership_status ||
+                    "--"}
+                </td>
+
+                <td>
+                  {row.linked_accounts_count ??
+                    0}
+                </td>
+
+                <td>
+                  <div className="mr-actions-cell">
+                    <ActionMenu
+                      items={[
+                        ...(canDelete
+                          ? [
+                              {
+                                label:
+                                  "Delete",
+                                danger: true,
+                                onClick:
+                                  () =>
+                                    deleteRow(
+                                      row
+                                    ),
+                              },
+                            ]
+                          : []),
+                      ]}
+                    />
+                  </div>
+                </td>
+              </tr>
+            )
+          )
+        )}
+      </tbody>
+    </table>
+  </div>
+</div>
 
       <div className="mr-pagination">
         <button

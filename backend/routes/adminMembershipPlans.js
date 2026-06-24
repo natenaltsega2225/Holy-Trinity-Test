@@ -71,6 +71,59 @@ function parsePresetAmounts(value) {
     return [];
   }
 }
+async function recalculateMembershipPlans(
+  monthlyAmount,
+  registrationFee
+) {
+  const monthly = Number(monthlyAmount || 0);
+
+  if (monthly <= 0) return;
+
+  await pool.query(
+    `
+    UPDATE tbl_finance_dues_plans
+    SET
+      minimum_amount = ?,
+      registration_fee = ?,
+      updated_at = NOW()
+    WHERE billing_cycle = '3_month'
+    `,
+    [
+      Number((monthly * 3).toFixed(2)),
+      registrationFee,
+    ]
+  );
+
+  await pool.query(
+    `
+    UPDATE tbl_finance_dues_plans
+    SET
+      minimum_amount = ?,
+      registration_fee = ?,
+      updated_at = NOW()
+    WHERE billing_cycle = '6_month'
+    `,
+    [
+      Number((monthly * 6).toFixed(2)),
+      registrationFee,
+    ]
+  );
+
+  await pool.query(
+    `
+    UPDATE tbl_finance_dues_plans
+    SET
+      minimum_amount = ?,
+      registration_fee = ?,
+      updated_at = NOW()
+    WHERE billing_cycle = '12_month'
+    `,
+    [
+      Number((monthly * 12).toFixed(2)),
+      registrationFee,
+    ]
+  );
+}
 
 router.get(
   "/",
@@ -160,18 +213,52 @@ router.get(
   }
 );
 
+
 router.post(
   "/",
   authRequired,
   requireRole("finance", "admin", "super_admin"),
   async (req, res) => {
     try {
-      const code = clean(req.body.code, 40);
-      const name = clean(req.body.name, 120);
+      const code = clean(
+        req.body.plan_code ||
+        req.body.code,
+        40
+      );
 
-      if (!code || !name) {
+      const name = clean(
+        req.body.plan_name ||
+        req.body.name ||
+        req.body.title,
+        120
+      );
+
+      if (!code) {
         return res.status(400).json({
-          error: "Code and name are required.",
+          error: "Plan code is required.",
+        });
+      }
+
+      if (!name) {
+        return res.status(400).json({
+          error: "Plan name is required.",
+        });
+      }
+
+      // Prevent duplicate codes
+      const [[existingPlan]] = await pool.query(
+        `
+        SELECT id
+        FROM tbl_finance_dues_plans
+        WHERE plan_code = ?
+        LIMIT 1
+        `,
+        [code]
+      );
+
+      if (existingPlan) {
+        return res.status(409).json({
+          error: `Plan code '${code}' already exists.`,
         });
       }
 
@@ -180,7 +267,9 @@ router.post(
       );
 
       const duration_months =
-        durationFromOption(billing_cycle);
+        durationFromOption(
+          billing_cycle
+        );
 
       const minimum_amount = toMoney(
         req.body.minimum_amount,
@@ -216,29 +305,41 @@ router.post(
           created_at,
           updated_at
         )
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW())
+        VALUES (
+          ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, NOW(), NOW()
+        )
         `,
         [
           code,
           name,
 
-          clean(req.body.description, 5000),
+          clean(
+            req.body.description,
+            5000
+          ),
 
           billing_cycle,
+
           duration_months,
 
           minimum_amount,
 
-          JSON.stringify(preset_amounts),
+          JSON.stringify(
+            preset_amounts
+          ),
 
           registration_fee,
 
           clean(
-            req.body.member_type || "both",
+            req.body.member_type ||
+            "both",
             20
           ),
 
-          toInt(req.body.sort_order, 0),
+          toInt(
+            req.body.sort_order,
+            0
+          ),
 
           Number(
             req.body.allow_custom_amount
@@ -256,12 +357,13 @@ router.post(
         ]
       );
 
-      return res.json({
+      return res.status(201).json({
         ok: true,
         id: result.insertId,
         message:
           "Membership plan created successfully.",
       });
+
     } catch (err) {
       console.error(
         "membership create error:",
@@ -269,11 +371,16 @@ router.post(
       );
 
       return res.status(500).json({
-        error: "Failed to create membership plan.",
+        error:
+          "Failed to create membership plan.",
       });
     }
   }
 );
+
+
+
+
 
 router.put(
   "/:id",
@@ -293,68 +400,191 @@ router.put(
         req.body.billing_cycle
       );
 
-      await pool.query(
-        `
-        UPDATE tbl_finance_dues_plans
-        SET
-          plan_code = ?,
-          plan_name = ?,
-          description = ?,
-          billing_cycle = ?,
-          duration_months = ?,
-          minimum_amount = ?,
-          preset_amounts_json = ?,
-          registration_fee = ?,
-          member_type = ?,
-          sort_order = ?,
-          allow_custom_amount = ?,
-          is_active = ?,
-          updated_at = NOW()
-        WHERE id = ?
-        `,
-        [
-          clean(req.body.code, 40),
+   
+// Get existing plan first so we never overwrite plan_code with ''
+// ========================================================
+// Load Existing Plan
+// ========================================================
 
-          clean(req.body.name, 120),
+const [[existingPlan]] = await pool.query(
+  `
+  SELECT
+    id,
+    plan_code,
+    plan_name,
+    billing_cycle,
+    minimum_amount,
+    registration_fee
+  FROM tbl_finance_dues_plans
+  WHERE id = ?
+  LIMIT 1
+  `,
+  [id]
+);
 
-          clean(req.body.description, 5000),
+if (!existingPlan) {
+  return res.status(404).json({
+    error: "Membership plan not found.",
+  });
+}
 
-          billing_cycle,
+// ========================================================
+// Normalize Incoming Values
+// ========================================================
 
-          durationFromOption(billing_cycle),
+const planCode = clean(
+  req.body.plan_code ||
+  req.body.code ||
+  existingPlan.plan_code,
+  40
+);
 
-          toMoney(req.body.minimum_amount, 0),
+const planName = clean(
+  req.body.plan_name ||
+  req.body.name ||
+  req.body.title ||
+  existingPlan.plan_name,
+  120
+);
 
-          JSON.stringify(
-            parsePresetAmounts(
-              req.body.preset_amounts
-            )
-          ),
+if (!planCode) {
+  return res.status(400).json({
+    error: "Plan code is required.",
+  });
+}
 
-          toMoney(req.body.registration_fee, 0),
+if (!planName) {
+  return res.status(400).json({
+    error: "Plan name is required.",
+  });
+}
 
-          clean(
-            req.body.member_type || "both",
-            20
-          ),
+const minimumAmount = toMoney(
+  req.body.minimum_amount ??
+  req.body.amount ??
+  req.body.price ??
+  existingPlan.minimum_amount,
+  0
+);
 
-          toInt(req.body.sort_order, 0),
+const registrationFee = toMoney(
+  req.body.registration_fee ??
+  existingPlan.registration_fee,
+  0
+);
 
-          Number(
-            req.body.allow_custom_amount
-              ? 1
-              : 0
-          ),
+// ========================================================
+// Prevent Duplicate Plan Codes
+// ========================================================
 
-          Number(
-            req.body.is_active
-              ? 1
-              : 0
-          ),
+const [[duplicatePlan]] = await pool.query(
+  `
+  SELECT id
+  FROM tbl_finance_dues_plans
+  WHERE plan_code = ?
+    AND id <> ?
+  LIMIT 1
+  `,
+  [planCode, id]
+);
 
-          id,
-        ]
-      );
+if (duplicatePlan) {
+  return res.status(409).json({
+    error: `Plan code '${planCode}' already exists.`,
+  });
+}
+
+// ========================================================
+// Update Plan
+// ========================================================
+
+await pool.query(
+  `
+  UPDATE tbl_finance_dues_plans
+  SET
+    plan_code = ?,
+    plan_name = ?,
+    description = ?,
+    billing_cycle = ?,
+    duration_months = ?,
+    minimum_amount = ?,
+    preset_amounts_json = ?,
+    registration_fee = ?,
+    member_type = ?,
+    sort_order = ?,
+    allow_custom_amount = ?,
+    is_active = ?,
+    updated_at = NOW()
+  WHERE id = ?
+  `,
+  [
+    planCode,
+
+    planName,
+
+    clean(req.body.description, 5000),
+
+    billing_cycle,
+
+    durationFromOption(
+      billing_cycle
+    ),
+
+    minimumAmount,
+
+    JSON.stringify(
+      parsePresetAmounts(
+        req.body.preset_amounts
+      )
+    ),
+
+    registrationFee,
+
+    clean(
+      req.body.member_type ||
+      "both",
+      20
+    ),
+
+    toInt(
+      req.body.sort_order,
+      0
+    ),
+
+    Number(
+      req.body.allow_custom_amount
+        ? 1
+        : 0
+    ),
+
+    Number(
+      req.body.is_active
+        ? 1
+        : 0
+    ),
+
+    id,
+  ]
+);
+
+// ========================================================
+// Auto Recalculate Related Plans
+// ========================================================
+
+if (billing_cycle === "monthly") {
+  await recalculateMembershipPlans(
+    minimumAmount,
+    registrationFee
+  );
+}
+// Auto-update related plans when Monthly changes
+
+// if (billing_cycle === "monthly") {
+//   await recalculateMembershipPlans(
+//     minimumAmount,
+//     registrationFee
+//   );
+// }
 
       return res.json({
         ok: true,
@@ -373,6 +603,10 @@ router.put(
     }
   }
 );
+
+
+
+
 
 router.delete(
   "/:id",

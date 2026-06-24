@@ -5,18 +5,21 @@ const crypto = require("crypto");
 
 const {
   addMonths,
-  buildCoverageLabel,
+  calculateCoverage,
   mysqlDate,
+  mysqlNow,
+  dateOnly,
+  buildCoverageLabel,
 } = require("./dateHelpers");
 
-/* =========================================================
-   BASIC HELPERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Text / JSON                                                                */
+/* -------------------------------------------------------------------------- */
 
 function clean(value, max = 255) {
   return String(value ?? "")
     .trim()
-    .slice(0, max);
+    .slice(0, Math.max(1, Number(max || 255)));
 }
 
 function nullable(value, max = 255) {
@@ -24,172 +27,160 @@ function nullable(value, max = 255) {
   return text || null;
 }
 
-function money(value) {
-  const n = Number(value || 0);
+function safeJson(value) {
+  if (value === undefined || value === null) return null;
 
-  if (!Number.isFinite(n)) {
-    return 0;
+  if (typeof value === "string") {
+    const text = value.trim();
+    return text || null;
   }
 
-  return Number(n.toFixed(2));
+  try {
+    return JSON.stringify(value);
+  } catch (_err) {
+    return JSON.stringify({ value: String(value) });
+  }
+}
+
+function parseJson(value, fallback = null) {
+  if (!value) return fallback;
+
+  if (typeof value === "object") return value;
+
+  try {
+    return JSON.parse(value);
+  } catch (_err) {
+    return fallback;
+  }
+}
+
+function slug(value, fallback = "item") {
+  const text = clean(value, 120)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_+|_+$/g, "");
+
+  return text || fallback;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Money                                                                      */
+/* -------------------------------------------------------------------------- */
+
+function money(value) {
+  const number = Number(value || 0);
+
+  if (!Number.isFinite(number)) return 0;
+
+  return Number(number.toFixed(2));
 }
 
 function cents(value) {
   return Math.round(money(value) * 100);
 }
 
-function mysqlNow(date = new Date()) {
-  const d =
-    date instanceof Date
-      ? date
-      : new Date(date);
-
-  if (
-    Number.isNaN(d.getTime())
-  ) {
-    return mysqlNow(
-      new Date()
-    );
-  }
-
-  return d
-    .toISOString()
-    .slice(0, 19)
-    .replace("T", " ");
+function fromCents(value) {
+  return money(Number(value || 0) / 100);
 }
 
-function dateOnly(
-  value = new Date()
-) {
-  const d =
-    value instanceof Date
-      ? value
-      : new Date(value);
-
-  if (
-    Number.isNaN(d.getTime())
-  ) {
-    return new Date()
-      .toISOString()
-      .slice(0, 10);
-  }
-
-  return d
-    .toISOString()
-    .slice(0, 10);
+function publicMoney(value) {
+  return money(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
-function generateNumber(
-  prefix
-) {
+function formatCurrency(value, currency = "USD") {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+  }).format(money(value));
+}
+
+/* -------------------------------------------------------------------------- */
+/* Numbers                                                                    */
+/* -------------------------------------------------------------------------- */
+
+function generateNumber(prefix = "HT") {
   const stamp = new Date()
     .toISOString()
-    .replace(
-      /[-:.TZ]/g,
-      ""
-    )
+    .replace(/[-:.TZ]/g, "")
     .slice(0, 14);
 
-  const rand =
-    crypto
-      .randomBytes(3)
-      .toString("hex")
-      .toUpperCase();
+  const rand = crypto.randomBytes(3).toString("hex").toUpperCase();
 
-  return `${prefix}-${stamp}-${rand}`;
+  return `${clean(prefix, 20).toUpperCase()}-${stamp}-${rand}`;
 }
 
-/* =========================================================
-   DONATION CATEGORIES
-========================================================= */
+function generatePublicToken(bytes = 32) {
+  return crypto.randomBytes(Number(bytes || 32)).toString("base64url");
+}
+
+function sha256Hex(value) {
+  return crypto
+    .createHash("sha256")
+    .update(String(value || ""))
+    .digest("hex");
+}
+
+/* -------------------------------------------------------------------------- */
+/* Donation Categories                                                        */
+/* -------------------------------------------------------------------------- */
 
 const DONATION_CATEGORIES = {
-
-  plate_collection:
-    "መባ — Plate Collection",
-
-  candle_sale:
-    "ሻማ — Candle Sale",
-
-  general_donation:
-    "ስጦታ — General Donation",
-
-  tithe:
-    "አስራት — Tithe",
-
-  vows:
-    "ስዕለት — Vows",
-
-  baptism:
-    "ክርስትና — Baptism",
-
-  wedding_engagement:
-    "ጋብቻ / ቀለበት — Wedding / Engagement",
-
-  memorial_service:
-    "ፍታት — Memorial Service",
-
-  pledge:
-    "ቃል የተገባ — Pledge",
-
-  building_fund:
-    "የቤተክርስቲያን ማሰሪያ — Building Fund",
-
-  charity_fund:
-    "በጎ አድራጎት — Charity Fund",
-
-  auction:
-    "ጨረታ — Auction",
-
-  other_fund:
-    "ሌላ — Other Fund",
-
-  sunday_cash_collection:
-    "የእሁድ ስብስብ — Sunday Collection",
+  membership: "አባልነት — Membership",
+  plate_collection: "መባ — Plate Collection",
+  candle_sale: "ሻማ — Candle Sale",
+  general_donation: "ስጦታ — General Donation",
+  tithe: "አስራት — Tithe",
+  vows: "ስዕለት — Vows",
+  baptism: "ክርስትና — Baptism",
+  wedding_engagement: "ጋብቻ / ቀለበት — Wedding / Engagement",
+  memorial_service: "ፍታት — Memorial Service",
+  pledge: "ቃል የተገባ — Pledge",
+  building_fund: "የቤተክርስቲያን ማሰሪያ — Building Fund",
+  charity_fund: "በጎ አድራጎት — Charity Fund",
+  auction: "ጨረታ — Auction",
+  other_fund: "ሌላ — Other Fund",
+  sunday_cash_collection: "የእሁድ ስብስብ — Sunday Collection",
+  school: "ትምህርት — School Program",
+  trip: "ጉዞ — Trip Program",
 };
 
-function normalizeDonationCategory(
-  value
-) {
+function normalizeDonationCategory(value) {
+  const key = slug(value || "general_donation", "general_donation");
 
-  const key = clean(
-    value ||
-      "general_donation",
-    120
-  )
-    .toLowerCase()
-    .replace(/\s+/g, "_");
+  const aliases = {
+    donation: "general_donation",
+    general: "general_donation",
+    plate: "plate_collection",
+    candle: "candle_sale",
+    wedding: "wedding_engagement",
+    engagement: "wedding_engagement",
+    memorial: "memorial_service",
+    building: "building_fund",
+    charity: "charity_fund",
+    sunday: "sunday_cash_collection",
+  };
 
-  return DONATION_CATEGORIES[
-    key
-  ]
-    ? key
+  const normalized = aliases[key] || key;
+
+  return DONATION_CATEGORIES[normalized]
+    ? normalized
     : "general_donation";
 }
 
-function donationCategoryLabel(
-  value
-) {
-
-  return DONATION_CATEGORIES[
-    normalizeDonationCategory(
-      value
-    )
-  ];
+function donationCategoryLabel(value) {
+  const key = normalizeDonationCategory(value);
+  return DONATION_CATEGORIES[key] || DONATION_CATEGORIES.general_donation;
 }
 
-/* =========================================================
-   PAYMENT NORMALIZATION
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Payment Normalization                                                      */
+/* -------------------------------------------------------------------------- */
 
-function normalizePaymentType(
-  value
-) {
-
-  const raw = clean(
-    value,
-    80
-  ).toLowerCase();
+function normalizePaymentType(value) {
+  const raw = slug(value || "other", "other");
 
   if (
     [
@@ -205,372 +196,201 @@ function normalizePaymentType(
     return "membership";
   }
 
-  if (
-    [
-      "school",
-      "school_program",
-      "kids",
-      "kids_school",
-      "program",
-    ].includes(raw)
-  ) {
+  if (["school", "school_program", "kids", "kids_school", "program"].includes(raw)) {
     return "school";
   }
 
-  if (
-    ["trip", "travel"].includes(
-      raw
-    )
-  ) {
+  if (["trip", "travel", "trip_program"].includes(raw)) {
     return "trip";
   }
 
-  if (
-    [
-      "donation",
-      "giving",
-      "donate",
-      "manual_donation",
-    ].includes(raw)
-  ) {
+  if (["donation", "giving", "donate", "manual_donation"].includes(raw)) {
     return "donation";
+  }
+
+  if (["pledge", "pledges", "campaign_pledge"].includes(raw)) {
+    return "pledge";
   }
 
   return raw || "other";
 }
 
-function normalizePaymentMethod(
-  value
-) {
+function normalizePaymentMethod(value) {
+  const method = slug(value || "card", "card");
 
-  const method = clean(
-    value || "card",
-    50
-  ).toLowerCase();
+  const aliases = {
+    credit_card: "card",
+    debit_card: "card",
+    stripe: "card",
+    bank: "ach",
+    bank_account: "ach",
+    us_bank_account: "ach",
+    cheque: "check",
+    manual_check: "check",
+    manual_cash: "cash",
+    manual_zelle: "zelle",
+    cash_collection: "cash",
+  };
+
+  const normalized = aliases[method] || method;
 
   const allowed = new Set([
     "card",
+    "ach",
     "cash",
     "check",
     "zelle",
     "bank_deposit",
-    "cash_collection",
-    "ach",
-    "manual",
     "other",
   ]);
 
-  return allowed.has(method)
-    ? method
-    : "other";
+  return allowed.has(normalized) ? normalized : "other";
 }
 
-function normalizeProvider(
-  value,
-  method = ""
-) {
+function normalizeProvider(value, method = "") {
+  const provider = slug(value || "", "");
 
-  const provider = clean(
-    value,
-    50
-  ).toLowerCase();
+  if (provider) return provider;
 
-  if (provider) {
-    return provider;
-  }
+  const normalizedMethod = normalizePaymentMethod(method);
 
-  const m =
-    normalizePaymentMethod(
-      method
-    );
-
-  if (
-    m === "card" ||
-    m === "ach"
-  ) {
+  if (normalizedMethod === "card" || normalizedMethod === "ach") {
     return "stripe";
   }
 
   return "manual";
 }
 
-function normalizeStatus(
-  value
-) {
+function normalizeStatus(value) {
+  const status = slug(value || "paid", "paid");
 
-  const status = clean(
-    value || "paid",
-    40
-  ).toLowerCase();
-
-  if (
-    [
-      "paid",
-      "success",
-      "successful",
-      "completed",
-      "posted",
-      "succeeded",
-    ].includes(status)
-  ) {
+  if (["paid", "success", "successful", "completed", "posted", "succeeded"].includes(status)) {
     return "paid";
   }
 
-  if (
-    [
-      "pending",
-      "open",
-      "processing",
-    ].includes(status)
-  ) {
+  if (["pending", "open", "processing", "requires_action"].includes(status)) {
     return "pending";
   }
 
-  if (
-    [
-      "failed",
-      "declined",
-    ].includes(status)
-  ) {
+  if (["failed", "declined", "error"].includes(status)) {
     return "failed";
   }
 
-  if (
-    [
-      "cancelled",
-      "canceled",
-      "void",
-    ].includes(status)
-  ) {
+  if (["cancelled", "canceled", "void", "voided"].includes(status)) {
     return "cancelled";
+  }
+
+  if (["refunded", "refund"].includes(status)) {
+    return "refunded";
   }
 
   return "paid";
 }
 
-/* =========================================================
-   STATUS HELPERS
-========================================================= */
-
-function isPaidStatus(
-  value
-) {
-
-  return (
-    normalizeStatus(value) ===
-    "paid"
-  );
+function isPaidStatus(value) {
+  return normalizeStatus(value) === "paid";
 }
 
-function isPendingStatus(
-  value
-) {
-
-  return (
-    normalizeStatus(value) ===
-    "pending"
-  );
+function isPendingStatus(value) {
+  return normalizeStatus(value) === "pending";
 }
 
-function isFailedStatus(
-  value
-) {
-
-  return (
-    normalizeStatus(value) ===
-    "failed"
-  );
+function isFailedStatus(value) {
+  return normalizeStatus(value) === "failed";
 }
 
-/* =========================================================
-   COVERAGE HELPERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Coverage                                                                   */
+/* -------------------------------------------------------------------------- */
 
-function normalizeMonths(
-  payload = {}
-) {
-
+function normalizeMonths(payload = {}) {
   const months =
-    Number(
-      payload.months_paid
-    ) ||
-    Number(
-      payload.months
-    ) ||
-    Number(
-      payload.duration_months
-    ) ||
-    Number(
-      payload.interval_count
-    ) ||
-    Number(
-      payload.plan_months
-    ) ||
+    Number(payload.months_paid) ||
+    Number(payload.months) ||
+    Number(payload.duration_months) ||
+    Number(payload.interval_count) ||
+    Number(payload.plan_months) ||
     1;
 
-  return Math.max(
-    1,
-    Math.trunc(months)
-  );
+  return Math.max(1, Math.trunc(months));
 }
 
-function buildCoverage(
-  payload = {}
-) {
-
-  const months =
-    normalizeMonths(
-      payload
-    );
-
-  const paidAt =
-    payload.paid_at ||
-    payload.payment_date ||
-    new Date();
-
-  const paidDate =
-    new Date(paidAt);
-
-  const safeDate =
-    Number.isNaN(
-      paidDate.getTime()
-    )
-      ? new Date()
-      : paidDate;
+function buildCoverage(payload = {}) {
+  const months = normalizeMonths(payload);
 
   const start =
     payload.coverage_start ||
     payload.coverage_start_date ||
-    new Date(
-      safeDate.getFullYear(),
-      safeDate.getMonth(),
-      1
-    );
+    payload.start_date ||
+    payload.membership_start_date ||
+    payload.paid_at ||
+    payload.payment_date ||
+    new Date();
 
-  const startDate =
-    new Date(start);
-
-  const safeStart =
-    Number.isNaN(
-      startDate.getTime()
-    )
-      ? new Date(
-          safeDate.getFullYear(),
-          safeDate.getMonth(),
-          1
-        )
-      : startDate;
-
-  const safeEnd =
-    addMonths(
-      safeStart,
-      months
-    );
+  const coverage = calculateCoverage({
+    startDate: start,
+    monthsPaid: months,
+  });
 
   return {
-
     months,
-
-    start:
-      mysqlDate(
-        safeStart
-      ),
-
-    end:
-      mysqlDate(
-        safeEnd
-      ),
-
-    label:
-      buildCoverageLabel(
-        safeStart,
-        safeEnd
-      ),
+    start: coverage.coverage_start,
+    end: coverage.coverage_end,
+    label: coverage.coverage_label,
+    coverage_start: coverage.coverage_start,
+    coverage_end: coverage.coverage_end,
+    coverage_label: coverage.coverage_label,
+    coverage_months: coverage.coverage_months,
   };
 }
 
-/* =========================================================
-   CARD DISPLAY
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Display                                                                    */
+/* -------------------------------------------------------------------------- */
 
-function cardDisplay(
-  row = {}
-) {
+function cardDisplay(row = {}) {
+  const last4 =
+    row.card_last4 ||
+    row.card_last_4 ||
+    row.last4 ||
+    "";
 
-  if (!row.card_last4) {
-    return "--";
-  }
+  if (!last4) return "--";
 
-  return `${String(
-    row.card_brand ||
-      "CARD"
-  ).toUpperCase()} •••• ${
-    row.card_last4
-  }`;
+  return `${String(row.card_brand || row.brand || "CARD").toUpperCase()} **** ${last4}`;
 }
 
-/* =========================================================
-   MONEY DISPLAY
-========================================================= */
+function maskEmail(value = "") {
+  const email = String(value || "");
+  const [name, domain] = email.split("@");
 
-function publicMoney(
-  value
-) {
+  if (!name || !domain) return email;
 
-  return `$${money(
-    value
-  ).toLocaleString(
-    "en-US",
-    {
-      minimumFractionDigits: 2,
-      maximumFractionDigits: 2,
-    }
-  )}`;
+  return `${name.slice(0, 2)}***@${domain}`;
 }
-
-/* =========================================================
-   CURRENCY FORMAT
-========================================================= */
-
-function formatCurrency(
-
-  value,
-
-  currency = "USD"
-) {
-
-  return new Intl.NumberFormat(
-    "en-US",
-    {
-
-      style: "currency",
-
-      currency,
-    }
-  ).format(
-    money(value)
-  );
-}
-
-/* =========================================================
-   EXPORTS
-========================================================= */
 
 module.exports = {
-
   clean,
   nullable,
+  safeJson,
+  parseJson,
+  slug,
 
   money,
   cents,
+  fromCents,
+  publicMoney,
+  formatCurrency,
 
   mysqlNow,
   dateOnly,
+  mysqlDate,
 
   generateNumber,
+  generatePublicToken,
+  sha256Hex,
 
   DONATION_CATEGORIES,
-
   normalizeDonationCategory,
   donationCategoryLabel,
 
@@ -585,9 +405,9 @@ module.exports = {
 
   normalizeMonths,
   buildCoverage,
+  addMonths,
+  buildCoverageLabel,
 
   cardDisplay,
-
-  publicMoney,
-  formatCurrency,
+  maskEmail,
 };

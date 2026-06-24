@@ -4,8 +4,9 @@ import { useLocation, useNavigate } from "react-router-dom";
 import api from "../../api";
 import VolunteerCertificateTemplate from "../../certificates/VolunteerCertificateTemplate";
 import { generateCertificatePdf } from "../../../utils/generateCertificatePdf";
-import "../../../styles/admin-serve-center.css";
-
+// import "../../../styles/admin-serve-center.css";
+import "../../../styles/admin-enterprise.css";
+import "../../../styles/admin-table.css";
 const CATEGORY_OPTIONS = [
   "Sunday School",
   "Youth Mentorship",

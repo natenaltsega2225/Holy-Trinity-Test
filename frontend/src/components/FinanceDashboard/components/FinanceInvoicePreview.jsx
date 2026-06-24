@@ -1,718 +1,537 @@
 // frontend/src/components/FinanceDashboard/components/FinanceInvoicePreview.jsx
-
 import React from "react";
-
 import {
-  FileText,
-  User,
+  AlertTriangle,
   Calendar,
+  CheckCircle2,
   CreditCard,
   Download,
-  Printer,
+  ExternalLink,
+  FileText,
   Mail,
-  CheckCircle2,
-  AlertTriangle,
+  Printer,
+  Receipt,
+  Send,
+  User,
+  X,
 } from "lucide-react";
 
-// import "../finance-dashboard.css";
-
-/* =========================================================
-   HELPERS
-========================================================= */
+function numberValue(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
 function money(value) {
-
-  return `$${Number(
-    value || 0
-  ).toLocaleString(undefined, {
-
-    minimumFractionDigits: 2,
-
-    maximumFractionDigits: 2,
-  })}`;
+  return numberValue(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
 function pretty(value) {
-
   return String(value || "--")
     .replaceAll("_", " ")
-    .replace(/\b\w/g, (c) =>
-      c.toUpperCase()
-    );
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
 function formatDate(value) {
+  if (!value) return "--";
 
-  if (!value) {
+  const parsed = new Date(value);
 
-    return "--";
+  if (Number.isNaN(parsed.getTime())) {
+    return String(value);
   }
 
-  const d =
-    new Date(value);
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
-  if (
-    Number.isNaN(
-      d.getTime()
-    )
-  ) {
-
-    return "--";
-  }
-
-  return d.toLocaleDateString(
-    "en-US",
-    {
-      month: "short",
-      day: "numeric",
-      year: "numeric",
+function firstValue(row = {}, keys = [], fallback = "--") {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
     }
+  }
+
+  return fallback;
+}
+
+function invoiceStatus(invoice = {}) {
+  return String(firstValue(invoice, ["status", "invoice_status"], "open")).toLowerCase();
+}
+
+function financialSummary(invoice = {}) {
+  const total = numberValue(firstValue(invoice, ["total_amount", "amount", "invoice_amount"], 0));
+  const paidRaw = numberValue(firstValue(invoice, ["paid_amount", "amount_paid", "total_paid"], 0));
+  const paid = total > 0 ? Math.min(Math.max(paidRaw, 0), total) : Math.max(paidRaw, 0);
+
+  const explicitBalance = firstValue(invoice, ["balance_due", "remaining_amount", "outstanding_amount"], null);
+  const computedBalance = Math.max(total - paid, 0);
+
+  const balance =
+    explicitBalance === null || explicitBalance === undefined || explicitBalance === ""
+      ? computedBalance
+      : Math.max(Math.min(numberValue(explicitBalance), computedBalance), 0);
+
+  return {
+    total,
+    paid,
+    balance,
+    paidInFull: balance <= 0 && total > 0,
+  };
+}
+
+function rowsFromItems(invoice = {}) {
+  if (Array.isArray(invoice.items) && invoice.items.length) {
+    return invoice.items.map((item, index) => {
+      const qty = numberValue(firstValue(item, ["quantity", "qty"], 1)) || 1;
+      const unit = numberValue(firstValue(item, ["unit_price", "unit_amount", "rate"], 0));
+      const total = numberValue(firstValue(item, ["total_price", "total_amount", "total", "amount"], qty * unit));
+
+      return {
+        id: item.id || index,
+        code: firstValue(item, ["code"], String(index + 1).padStart(2, "0")),
+        type: firstValue(item, ["item_type", "type", "category"], firstValue(invoice, ["category", "payment_type"], "Invoice")),
+        description: firstValue(
+          item,
+          ["description", "item_name", "detail", "coverage", "program_name", "campaign_name"],
+          "--"
+        ),
+        qty,
+        unit,
+        total,
+      };
+    });
+  }
+
+  const total = numberValue(firstValue(invoice, ["total_amount", "amount", "invoice_amount"], 0));
+  const category = firstValue(invoice, ["category", "payment_type", "invoice_type"], "finance");
+
+  return [
+    {
+      id: "summary",
+      code: "01",
+      type: category,
+      description:
+        firstValue(invoice, ["description", "sub_category", "plan_name", "program_name", "campaign_name"], "") ||
+        pretty(category),
+      qty: 1,
+      unit: total,
+      total,
+    },
+  ];
+}
+
+function paymentRows(invoice = {}) {
+  if (Array.isArray(invoice.payments)) return invoice.payments;
+  if (Array.isArray(invoice.payment_history)) return invoice.payment_history;
+
+  if (invoice.payment_number || invoice.paid_amount) {
+    return [
+      {
+        payment_number: invoice.payment_number,
+        payment_date: invoice.paid_at || invoice.payment_date,
+        amount: invoice.paid_amount,
+        method: invoice.payment_method || invoice.method,
+      },
+    ];
+  }
+
+  return [];
+}
+
+function recipientName(invoice = {}) {
+  return firstValue(
+    invoice,
+    [
+      "full_name_snapshot",
+      "full_name",
+      "bill_to",
+      "payer_name",
+      "donor_name",
+      "guest_name",
+      "customer_name",
+      "member_name",
+    ],
+    "Guest / Unknown"
   );
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+function recipientEmail(invoice = {}) {
+  return firstValue(
+    invoice,
+    ["email_snapshot", "email", "recipient_email", "payer_email", "donor_email", "guest_email"],
+    "--"
+  );
+}
 
-export default function FinanceInvoicePreview({
+function paymentLink(invoice = {}) {
+  return firstValue(
+    invoice,
+    ["payment_link", "payment_url", "public_invoice_url", "checkout_url", "pay_url"],
+    ""
+  );
+}
 
-  open,
+function StatusBanner({ invoice, summary }) {
+  const status = invoiceStatus(invoice);
 
-  invoice,
-
-  onClose,
-
-  onDownload,
-
-  onPrint,
-
-  onEmail,
-
-  onMarkPaid,
-
-  onAddPayment,
-}) {
-
-  if (
-    !open ||
-    !invoice
-  ) {
-
-    return null;
+  if (summary.paidInFull || status === "paid") {
+    return (
+      <div className="finance-status-paid">
+        <CheckCircle2 size={18} strokeWidth={2.1} />
+        Invoice fully paid
+      </div>
+    );
   }
 
-  const totalPaid =
-    Number(
-      invoice.total_paid || 0
+  if (status === "overdue") {
+    return (
+      <div className="finance-status-unpaid">
+        <AlertTriangle size={18} strokeWidth={2.1} />
+        Invoice overdue
+      </div>
     );
+  }
 
-  const totalAmount =
-    Number(
-      invoice.total_amount || 0
+  if (status === "cancelled" || status === "canceled" || status === "void") {
+    return (
+      <div className="finance-status-unpaid">
+        <AlertTriangle size={18} strokeWidth={2.1} />
+        Invoice cancelled / void
+      </div>
     );
-
-  const balance =
-    totalAmount -
-    totalPaid;
-
-  const paid =
-    balance <= 0;
+  }
 
   return (
+    <div className="finance-status-unpaid">
+      <AlertTriangle size={18} strokeWidth={2.1} />
+      Outstanding balance
+    </div>
+  );
+}
 
+function ActionButton({ children, onClick, variant = "secondary", disabled }) {
+  return (
+    <button
+      type="button"
+      className={`finance-btn ${variant}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
+
+export default function FinanceInvoicePreview({
+  open,
+  invoice,
+  onClose,
+  onDownload,
+  onPrint,
+  onEmail,
+  onResend,
+  onSendPaymentLink,
+  onMarkPaid,
+  onAddPayment,
+  onCancel,
+  onRefund,
+}) {
+  if (!open || !invoice) return null;
+
+  const summary = financialSummary(invoice);
+  const items = rowsFromItems(invoice);
+  const payments = paymentRows(invoice);
+  const link = paymentLink(invoice);
+  const status = invoiceStatus(invoice);
+  const canCollect =
+    summary.balance > 0 && !["paid", "cancelled", "canceled", "void"].includes(status);
+  const canRefund = summary.paid > 0 && status === "paid";
+
+  return (
     <div className="finance-modal-overlay">
-
-      <div className="finance-invoice-preview">
-
-        {/* =====================================
-            HEADER
-        ===================================== */}
-
+      <div className="finance-invoice-preview" role="dialog" aria-modal="true">
         <div className="finance-invoice-head">
-
           <div className="finance-invoice-head-left">
-
             <div className="finance-invoice-icon">
-
-              <FileText size={18} />
-
+              <FileText size={19} strokeWidth={2.1} />
             </div>
 
             <div>
-
-              <h2>
-                Invoice Preview
-              </h2>
-
-              <p>
-
-                Enterprise accounts
-                receivable and
-                billing preview.
-
-              </p>
-
+              <h2>Invoice Preview</h2>
+              <p>Accounts receivable preview with payment, receipt, and delivery controls.</p>
             </div>
-
           </div>
 
           <button
+            type="button"
             className="finance-modal-close"
             onClick={onClose}
+            aria-label="Close invoice preview"
           >
-
-            ×
-
+            <X size={18} strokeWidth={2.1} />
           </button>
-
         </div>
 
-        {/* =====================================
-            SUMMARY
-        ===================================== */}
-
         <div className="finance-invoice-summary">
-
           <div className="finance-summary-box">
-
-            <span>
-              Invoice #
-            </span>
-
-            <strong>
-
-              {
-                invoice.invoice_number
-              }
-
-            </strong>
-
+            <span>Invoice #</span>
+            <strong>{firstValue(invoice, ["invoice_number", "invoice_no"])}</strong>
           </div>
 
           <div className="finance-summary-box">
-
-            <span>
-              Status
-            </span>
-
-            <strong>
-
-              {pretty(
-                invoice.status
-              )}
-
-            </strong>
-
+            <span>Status</span>
+            <strong>{pretty(status)}</strong>
           </div>
 
           <div className="finance-summary-box">
-
-            <span>
-              Due Date
-            </span>
-
-            <strong>
-
-              {formatDate(
-                invoice.due_date
-              )}
-
-            </strong>
-
+            <span>Due Date</span>
+            <strong>{formatDate(firstValue(invoice, ["due_date"], ""))}</strong>
           </div>
 
           <div className="finance-summary-box finance-summary-highlight">
-
-            <span>
-              Balance
-            </span>
-
-            <strong>
-
-              {money(balance)}
-
-            </strong>
-
+            <span>Balance</span>
+            <strong>{money(summary.balance)}</strong>
           </div>
-
         </div>
 
-        {/* =====================================
-            BODY
-        ===================================== */}
-
         <div className="finance-invoice-body">
-
-          {/* MEMBER */}
-
-          <div className="finance-invoice-section">
-
+          <section className="finance-invoice-section">
             <div className="finance-invoice-section-title">
-
-              <User size={16} />
-
-              <span>
-                Member / Household
-              </span>
-
+              <User size={16} strokeWidth={2.1} />
+              <span>Member / Donor</span>
             </div>
 
             <div className="finance-grid-2">
-
               <div>
-
-                <label>
-                  Full Name
-                </label>
-
-                <strong>
-
-                  {invoice.full_name ||
-                    "--"}
-
-                </strong>
-
+                <label>Full Name</label>
+                <strong>{recipientName(invoice)}</strong>
               </div>
 
               <div>
-
-                <label>
-                  Member #
-                </label>
-
-                <strong>
-
-                  {invoice.member_no ||
-                    "--"}
-
-                </strong>
-
+                <label>Member #</label>
+                <strong>{firstValue(invoice, ["member_no", "member_number"])}</strong>
               </div>
 
               <div>
-
-                <label>
-                  Email
-                </label>
-
-                <strong>
-
-                  {invoice.email ||
-                    "--"}
-
-                </strong>
-
+                <label>Email</label>
+                <strong>{recipientEmail(invoice)}</strong>
               </div>
 
               <div>
-
-                <label>
-                  Household
-                </label>
-
-                <strong>
-
-                  {invoice.household_name ||
-                    "--"}
-
-                </strong>
-
+                <label>Phone</label>
+                <strong>{firstValue(invoice, ["phone_snapshot", "phone", "payer_phone", "guest_phone"])}</strong>
               </div>
+            </div>
+          </section>
 
+          <section className="finance-invoice-section">
+            <div className="finance-invoice-section-title">
+              <Calendar size={16} strokeWidth={2.1} />
+              <span>Invoice Context</span>
             </div>
 
-          </div>
+            <div className="finance-grid-2">
+              <div>
+                <label>Category</label>
+                <strong>{pretty(firstValue(invoice, ["category", "payment_type", "invoice_type"]))}</strong>
+              </div>
 
-          {/* BILLING */}
+              <div>
+                <label>Details</label>
+                <strong>
+                  {firstValue(
+                    invoice,
+                    ["sub_category", "plan_name", "program_name", "campaign_name", "donation_category", "description"],
+                    "--"
+                  )}
+                </strong>
+              </div>
 
-          <div className="finance-invoice-section">
+              <div>
+                <label>Payment #</label>
+                <strong>{firstValue(invoice, ["payment_number"])}</strong>
+              </div>
 
+              <div>
+                <label>Receipt #</label>
+                <strong>{firstValue(invoice, ["receipt_number"])}</strong>
+              </div>
+            </div>
+          </section>
+
+          <section className="finance-invoice-section">
             <div className="finance-invoice-section-title">
-
-              <CreditCard size={16} />
-
-              <span>
-                Billing Items
-              </span>
-
+              <CreditCard size={16} strokeWidth={2.1} />
+              <span>Invoice Items</span>
             </div>
 
             <table className="finance-invoice-table">
-
               <thead>
-
                 <tr>
-
-                  <th>
-                    Description
-                  </th>
-
-                  <th>
-                    Qty
-                  </th>
-
-                  <th>
-                    Unit
-                  </th>
-
-                  <th>
-                    Total
-                  </th>
-
+                  <th>Code</th>
+                  <th>Type</th>
+                  <th>Description</th>
+                  <th>Qty</th>
+                  <th>Unit</th>
+                  <th>Total</th>
                 </tr>
-
               </thead>
 
               <tbody>
-
-                {(invoice.items || []).map(
-                  (
-                    item,
-                    index
-                  ) => (
-
-                    <tr
-                      key={index}
-                    >
-
-                      <td>
-
-                        <div className="finance-line-item">
-
-                          <strong>
-
-                            {pretty(
-                              item.category
-                            )}
-
-                          </strong>
-
-                          <span>
-
-                            {item.description ||
-                              item.coverage ||
-                              "--"}
-
-                          </span>
-
-                        </div>
-
-                      </td>
-
-                      <td>
-
-                        {
-                          item.quantity
-                        }
-
-                      </td>
-
-                      <td>
-
-                        {money(
-                          item.unit_amount
-                        )}
-
-                      </td>
-
-                      <td>
-
-                        {money(
-                          item.total
-                        )}
-
-                      </td>
-
-                    </tr>
-                  )
-                )}
-
+                {items.map((item) => (
+                  <tr key={item.id}>
+                    <td>{item.code}</td>
+                    <td>{pretty(item.type)}</td>
+                    <td>
+                      <div className="finance-line-item">
+                        <strong>{pretty(item.type)}</strong>
+                        <span>{item.description}</span>
+                      </div>
+                    </td>
+                    <td>{item.qty}</td>
+                    <td>{money(item.unit)}</td>
+                    <td>{money(item.total)}</td>
+                  </tr>
+                ))}
               </tbody>
-
             </table>
+          </section>
 
-          </div>
-
-          {/* PAYMENTS */}
-
-          <div className="finance-invoice-section">
-
+          <section className="finance-invoice-section">
             <div className="finance-invoice-section-title">
-
-              <CheckCircle2 size={16} />
-
-              <span>
-                Payments Applied
-              </span>
-
+              <CheckCircle2 size={16} strokeWidth={2.1} />
+              <span>Payments Applied</span>
             </div>
 
-            {(invoice.payments || [])
-              .length ? (
-
+            {payments.length ? (
               <table className="finance-invoice-payment-table">
-
                 <thead>
-
                   <tr>
-
-                    <th>
-                      Payment #
-                    </th>
-
-                    <th>
-                      Date
-                    </th>
-
-                    <th>
-                      Amount
-                    </th>
-
+                    <th>Payment #</th>
+                    <th>Date</th>
+                    <th>Method</th>
+                    <th>Amount</th>
                   </tr>
-
                 </thead>
 
                 <tbody>
-
-                  {invoice.payments.map(
-                    (
-                      payment,
-                      index
-                    ) => (
-
-                      <tr
-                        key={index}
-                      >
-
-                        <td>
-
-                          {
-                            payment.payment_number
-                          }
-
-                        </td>
-
-                        <td>
-
-                          {formatDate(
-                            payment.payment_date
-                          )}
-
-                        </td>
-
-                        <td>
-
-                          {money(
-                            payment.amount
-                          )}
-
-                        </td>
-
-                      </tr>
-                    )
-                  )}
-
+                  {payments.map((payment, index) => (
+                    <tr key={payment.id || payment.payment_number || index}>
+                      <td>{payment.payment_number || "--"}</td>
+                      <td>{formatDate(payment.payment_date || payment.paid_at || payment.created_at)}</td>
+                      <td>{pretty(payment.method || payment.payment_method)}</td>
+                      <td>{money(payment.amount)}</td>
+                    </tr>
+                  ))}
                 </tbody>
-
               </table>
-
             ) : (
-
-              <div className="finance-empty-state">
-
-                No payments applied.
-
-              </div>
-
+              <div className="finance-empty-state">No payments applied.</div>
             )}
-
-          </div>
-
-          {/* TOTALS */}
+          </section>
 
           <div className="finance-invoice-totals">
-
             <div>
-
-              <label>
-                Total Amount
-              </label>
-
-              <strong>
-
-                {money(
-                  totalAmount
-                )}
-
-              </strong>
-
+              <label>Total Amount</label>
+              <strong>{money(summary.total)}</strong>
             </div>
 
             <div>
-
-              <label>
-                Total Paid
-              </label>
-
-              <strong>
-
-                {money(
-                  totalPaid
-                )}
-
-              </strong>
-
+              <label>Total Paid</label>
+              <strong>{money(summary.paid)}</strong>
             </div>
 
-            <div className={`
-              ${
-                paid
-                  ? "paid"
-                  : "unpaid"
-              }
-            `}>
-
-              <label>
-                Remaining Balance
-              </label>
-
-              <strong>
-
-                {money(
-                  balance
-                )}
-
-              </strong>
-
+            <div className={summary.balance <= 0 ? "paid" : "unpaid"}>
+              <label>Remaining Balance</label>
+              <strong>{money(summary.balance)}</strong>
             </div>
-
           </div>
 
-          {/* STATUS */}
+          {link ? (
+            <section className="finance-invoice-section">
+              <div className="finance-invoice-section-title">
+                <ExternalLink size={16} strokeWidth={2.1} />
+                <span>Payment Link</span>
+              </div>
+
+              <div className="finance-payment-link-preview">
+                <span>{link}</span>
+                <ActionButton onClick={() => navigator.clipboard?.writeText(link)}>
+                  Copy Link
+                </ActionButton>
+              </div>
+            </section>
+          ) : null}
 
           <div className="finance-invoice-status">
-
-            {paid ? (
-
-              <div className="finance-status-paid">
-
-                <CheckCircle2 size={18} />
-
-                Invoice Fully Paid
-
-              </div>
-
-            ) : (
-
-              <div className="finance-status-unpaid">
-
-                <AlertTriangle size={18} />
-
-                Outstanding Balance
-
-              </div>
-
-            )}
-
+            <StatusBanner invoice={invoice} summary={summary} />
           </div>
-
         </div>
 
-        {/* =====================================
-            FOOTER
-        ===================================== */}
-
         <div className="finance-invoice-actions">
+          <ActionButton onClick={onClose}>Close</ActionButton>
 
-          <button
-            className="finance-btn secondary"
-            onClick={onClose}
-          >
-
-            Close
-
-          </button>
-
-          <button
-            className="finance-btn secondary"
-            onClick={() =>
-              onPrint?.(
-                invoice
-              )
-            }
-          >
-
-            <Printer size={16} />
-
+          <ActionButton onClick={() => onPrint?.(invoice)}>
+            <Printer size={16} strokeWidth={2.1} />
             Print
+          </ActionButton>
 
-          </button>
-
-          <button
-            className="finance-btn secondary"
-            onClick={() =>
-              onEmail?.(
-                invoice
-              )
-            }
-          >
-
-            <Mail size={16} />
-
-            Email Invoice
-
-          </button>
-
-          <button
-            className="finance-btn secondary"
-            onClick={() =>
-              onDownload?.(
-                invoice
-              )
-            }
-          >
-
-            <Download size={16} />
-
+          <ActionButton onClick={() => onDownload?.(invoice)}>
+            <Download size={16} strokeWidth={2.1} />
             PDF
+          </ActionButton>
 
-          </button>
+          <ActionButton onClick={() => onEmail?.(invoice)}>
+            <Mail size={16} strokeWidth={2.1} />
+            Email
+          </ActionButton>
 
-          {!paid ? (
+          <ActionButton onClick={() => onResend?.(invoice)}>
+            <Send size={16} strokeWidth={2.1} />
+            Resend
+          </ActionButton>
 
+          {canCollect ? (
             <>
-              <button
-                className="finance-btn secondary"
-                onClick={() =>
-                  onAddPayment?.(
-                    invoice
-                  )
-                }
-              >
+              <ActionButton onClick={() => onSendPaymentLink?.(invoice)}>
+                <ExternalLink size={16} strokeWidth={2.1} />
+                Payment Link
+              </ActionButton>
 
+              <ActionButton onClick={() => onAddPayment?.(invoice)}>
+                <Receipt size={16} strokeWidth={2.1} />
                 Add Payment
+              </ActionButton>
 
-              </button>
-
-              <button
-                className="finance-btn primary"
-                onClick={() =>
-                  onMarkPaid?.(
-                    invoice
-                  )
-                }
-              >
-
+              <ActionButton variant="primary" onClick={() => onMarkPaid?.(invoice)}>
+                <CheckCircle2 size={16} strokeWidth={2.1} />
                 Mark Paid
-
-              </button>
+              </ActionButton>
             </>
           ) : null}
 
+          {canRefund ? (
+            <ActionButton onClick={() => onRefund?.(invoice)}>
+              <Receipt size={16} strokeWidth={2.1} />
+              Refund
+            </ActionButton>
+          ) : null}
+
+          {!["cancelled", "canceled", "void"].includes(status) ? (
+            <ActionButton variant="danger" onClick={() => onCancel?.(invoice)}>
+              <AlertTriangle size={16} strokeWidth={2.1} />
+              Cancel
+            </ActionButton>
+          ) : null}
         </div>
-
       </div>
-
     </div>
   );
 }

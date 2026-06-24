@@ -1,536 +1,3 @@
-//  //backend\routes\financeMembers.js
-
-
-// "use strict";
-
-// const express = require("express");
-// const pool = require("../db");
-// const { authRequired, requireRole } = require("../middleware/auth");
-// const { writeAuditLog } = require("../utils/audit");
-// const router = express.Router();
-
-// function clean(v, max = 255) {
-//   return String(v ?? "").trim().slice(0, max);
-// }
-
-// function nullable(v, max = 255) {
-//   const s = clean(v, max);
-//   return s || null;
-// }
-
-// function toId(v) {
-//   const n = Number(v);
-//   return Number.isInteger(n) && n > 0 ? n : null;
-// }
-
-// function toMoney(v, fallback = 0) {
-//   const n = Number(v);
-//   return Number.isFinite(n) ? Number(n.toFixed(2)) : fallback;
-// }
-
-// function toBool01(v, fallback = 1) {
-//   if (v === true || v === 1 || v === "1") return 1;
-//   if (v === false || v === 0 || v === "0") return 0;
-//   return fallback;
-// }
-
-// function buildMemberNo(id) {
-//   return `M-${String(id).padStart(5, "0")}`;
-// }
-
-// function isFinanceAllowed(req, res, next) {
-//   return requireRole("finance", "admin")(req, res, next);
-// }
-
-// function buildHouseholdWhere(householdType, where, params) {
-//   const normalized = clean(householdType || "", 50).toLowerCase();
-
-//   if (normalized === "independent") {
-//     where.push(`COALESCE(m.dependents_count, 0) = 0`);
-//   } else if (normalized === "with_dependents") {
-//     where.push(`COALESCE(m.dependents_count, 0) > 0`);
-//   }
-// }
-
-
-// router.post("/members", authRequired, isFinanceAllowed, async (req, res) => {
-//   const conn = await pool.getConnection();
-
-//   try {
-//     const first_name = clean(req.body.first_name, 100);
-//     const last_name = clean(req.body.last_name, 100);
-//     const full_name =
-//       clean(req.body.full_name, 180) || `${first_name} ${last_name}`.trim();
-//     const email = clean(req.body.email, 190).toLowerCase();
-//     const phone = nullable(req.body.phone, 40);
-
-//     const membership_status = clean(req.body.membership_status || "active", 50);
-//     const status = clean(req.body.status || "active", 50);
-//     const is_active = toBool01(req.body.is_active, 1);
-
-//     const notes = nullable(req.body.notes, 5000);
-
-//     const payment = req.body.payment || null;
-
-//     if (!first_name || !last_name || !email) {
-//       return res.status(400).json({
-//         error: "First name, last name, and email are required.",
-//       });
-//     }
-
-//     await conn.beginTransaction();
-
-//     // 🔥 CREATE MEMBER
-//     const [result] = await conn.query(
-//       `
-//       INSERT INTO tbl_members (
-//         member_no, first_name, last_name, full_name, email, phone,
-//         status, membership_status, is_active,
-//         open_balance, total_paid, dependents_count, household_member_count,
-//         notes, created_at, updated_at
-//       )
-//       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, 1, ?, NOW(), NOW())
-//       `,
-//       [
-//         "TEMP",
-//         first_name,
-//         last_name,
-//         full_name,
-//         email,
-//         phone,
-//         status,
-//         membership_status,
-//         is_active,
-//         notes,
-//       ]
-//     );
-
-//     const memberId = result.insertId;
-//     const memberNo = buildMemberNo(memberId);
-
-//     await conn.query(
-//       `UPDATE tbl_members SET member_no=? WHERE id=?`,
-//       [memberNo, memberId]
-//     );
-
-//     // ============================================================
-//     // 🔥 PAYMENT + LEDGER (CRITICAL)
-//     // ============================================================
-
-//     if (payment && payment.amount > 0) {
-//       const paymentNumber = `PAY-${Date.now()}`;
-
-//       const [payResult] = await conn.query(
-//         `
-//         INSERT INTO tbl_finance_payments
-//         (payment_number, member_id, amount, payment_type, sub_category, method, status, payment_date)
-//         VALUES (?, ?, ?, 'membership_dues', 'registration', ?, 'paid', NOW())
-//         `,
-//         [
-//           paymentNumber,
-//           memberId,
-//           payment.amount,
-//           payment.method || "cash",
-//         ]
-//       );
-
-//       // 🔥 UPDATE MEMBER FINANCE
-//       await conn.query(
-//         `
-//         UPDATE tbl_members
-//         SET total_paid = total_paid + ?, last_payment_at = NOW()
-//         WHERE id = ?
-//         `,
-//         [payment.amount, memberId]
-//       );
-
-//       // 🔥 LEDGER
-//       await conn.query(
-//         `
-//         INSERT INTO tbl_finance_ledger
-//         (member_id, type, amount, description, created_at)
-//         VALUES (?, 'credit', ?, 'Membership Registration Payment', NOW())
-//         `,
-//         [memberId, payment.amount]
-//       );
-//     }
-
-//     // 🔥 AUDIT
-//     await writeAuditLog({
-//       actorId: req.user?.id,
-//       action: "FINANCE_MEMBER_REGISTERED",
-//       entity: "member",
-//       entityId: memberId,
-//       meta: { email, memberNo },
-//       ipAddress: req.ip,
-//     });
-
-//     await conn.commit();
-
-//     return res.status(201).json({
-//       ok: true,
-//       id: memberId,
-//       member_no: memberNo,
-//       message: "Member + payment created successfully.",
-//     });
-//   } catch (err) {
-//     await conn.rollback();
-//     console.error(err);
-//     return res.status(500).json({ error: "Failed to create member." });
-//   } finally {
-//     conn.release();
-//   }
-// });
-
-// router.get(
-//   "/members",
-//   authRequired,
-//   isFinanceAllowed,
-//   async (req, res) => {
-//     try {
-//       const q = clean(req.query.q || req.query.search || "", 120);
-//       const page = Math.max(1, Number(req.query.page || 1));
-//       const limit = Math.max(
-//         1,
-//         Math.min(100, Number(req.query.limit || req.query.pageSize || 10))
-//       );
-
-//       const offset = (page - 1) * limit;
-
-//       const where = [];
-//       const params = [];
-
-//       if (q) {
-//         where.push(`
-//           (
-//             m.full_name LIKE ?
-//             OR m.email LIKE ?
-//             OR m.member_no LIKE ?
-//           )
-//         `);
-
-//         params.push(`%${q}%`, `%${q}%`, `%${q}%`);
-//       }
-
-//       if (req.query.status) {
-//         where.push(`m.membership_status = ?`);
-//         params.push(req.query.status);
-//       }
-
-//       if (req.query.active === "1") {
-//         where.push(`m.is_active = 1`);
-//       }
-
-//       if (req.query.active === "0") {
-//         where.push(`m.is_active = 0`);
-//       }
-
-//       buildHouseholdWhere(
-//         req.query.householdType,
-//         where,
-//         params
-//       );
-
-//       const whereSql = where.length
-//         ? `WHERE ${where.join(" AND ")}`
-//         : "";
-
-//       const [[countRow]] = await pool.query(
-//         `
-//         SELECT COUNT(*) AS total
-//         FROM tbl_members m
-//         ${whereSql}
-//         `,
-//         params
-//       );
-
-//       const [rows] = await pool.query(
-//         `
-//         SELECT
-//           m.id,
-//           m.member_no,
-//           m.full_name,
-//           m.email,
-//           m.phone,
-//           m.membership_status,
-//           m.status,
-//           m.is_active,
-//           m.open_balance,
-//           m.total_paid,
-//           m.created_at
-//         FROM tbl_members m
-//         ${whereSql}
-//         ORDER BY m.id DESC
-//         LIMIT ?
-//         OFFSET ?
-//         `,
-//         [...params, limit, offset]
-//       );
-
-//       return res.json({
-//         ok: true,
-//         rows,
-//         meta: {
-//           total: Number(countRow.total || 0),
-//           page,
-//           limit,
-//           totalPages: Math.ceil(
-//             Number(countRow.total || 0) / limit
-//           ),
-//         },
-//       });
-//     } catch (err) {
-//       console.error("GET /finance/members error:", err);
-
-//       return res.status(500).json({
-//         error: "Failed to load members.",
-//       });
-//     }
-//   }
-// );
-// router.post("/members", authRequired, isFinanceAllowed, async (req, res) => {
-//   const conn = await pool.getConnection();
-
-//   try {
-//     const first_name = clean(req.body.first_name, 100);
-//     const last_name = clean(req.body.last_name, 100);
-//     const full_name =
-//       clean(req.body.full_name, 180) || `${first_name} ${last_name}`.trim();
-//     const email = clean(req.body.email, 190).toLowerCase();
-//     const phone = nullable(req.body.phone, 40);
-
-//     const address_line1 = nullable(req.body.address_line1, 200);
-//     const address_line2 = nullable(req.body.address_line2, 200);
-//     const city = nullable(req.body.city, 100);
-//     const state = nullable(req.body.state, 80);
-//     const zip = nullable(req.body.zip, 20);
-
-//     const membership_status = clean(req.body.membership_status || "active", 50);
-//     const status = clean(req.body.status || "active", 50);
-//     const is_active = toBool01(req.body.is_active, 1);
-
-//     const open_balance = toMoney(req.body.open_balance, 0);
-//     const total_paid = toMoney(req.body.total_paid, 0);
-//     const notes = nullable(req.body.notes, 5000);
-
-//     if (!first_name || !last_name || !email) {
-//       return res.status(400).json({
-//         error: "First name, last name, and email are required.",
-//       });
-//     }
-
-//     await conn.beginTransaction();
-
-//     const [dupRows] = await conn.query(
-//       `
-//       SELECT id
-//       FROM tbl_members
-//       WHERE LOWER(email) = LOWER(?)
-//       LIMIT 1
-//       `,
-//       [email]
-//     );
-
-//     if (dupRows.length) {
-//       await conn.rollback();
-//       return res.status(409).json({ error: "Member email already exists." });
-//     }
-
-//     const [result] = await conn.query(
-//       `
-//       INSERT INTO tbl_members (
-//         member_no,
-//         first_name,
-//         last_name,
-//         full_name,
-//         email,
-//         phone,
-//         address_line1,
-//         address_line2,
-//         city,
-//         state,
-//         zip,
-//         member_type,
-//         registration_fee_status,
-//         status,
-//         membership_status,
-//         is_active,
-//         open_balance,
-//         total_paid,
-//         dependents_count,
-//         household_member_count,
-//         notes,
-//         created_at,
-//         updated_at
-//       )
-//       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'existing', 'waived', ?, ?, ?, ?, ?, 0, 1, ?, NOW(), NOW())
-//       `,
-//       [
-//         "TEMP",
-//         first_name,
-//         last_name,
-//         full_name,
-//         email,
-//         phone,
-//         address_line1,
-//         address_line2,
-//         city,
-//         state,
-//         zip,
-//         status,
-//         membership_status,
-//         is_active,
-//         open_balance,
-//         total_paid,
-//         notes,
-//       ]
-//     );
-
-//     const memberId = result.insertId;
-//     const memberNo = buildMemberNo(memberId);
-
-//     await conn.query(
-//       `
-//       UPDATE tbl_members
-//       SET member_no = ?
-//       WHERE id = ?
-//       `,
-//       [memberNo, memberId]
-//     );
-
-//     await conn.commit();
-
-//     return res.status(201).json({
-//       ok: true,
-//       id: memberId,
-//       member_no: memberNo,
-//       message: "Member created successfully.",
-//     });
-//   } catch (err) {
-//     try {
-//       await conn.rollback();
-//     } catch {}
-//     console.error("POST /finance/members error:", err);
-//     return res.status(500).json({ error: "Failed to create member." });
-//   } finally {
-//     conn.release();
-//   }
-// });
-
-// router.put("/members/:id", authRequired, isFinanceAllowed, async (req, res) => {
-//   try {
-//     const id = toId(req.params.id);
-//     if (!id) return res.status(400).json({ error: "Invalid member id." });
-
-//     const first_name = clean(req.body.first_name, 100);
-//     const last_name = clean(req.body.last_name, 100);
-//     const full_name =
-//       clean(req.body.full_name, 180) || `${first_name} ${last_name}`.trim();
-//     const email = clean(req.body.email, 190).toLowerCase();
-//     const phone = nullable(req.body.phone, 40);
-
-//     const address_line1 = nullable(req.body.address_line1, 200);
-//     const address_line2 = nullable(req.body.address_line2, 200);
-//     const city = nullable(req.body.city, 100);
-//     const state = nullable(req.body.state, 80);
-//     const zip = nullable(req.body.zip, 20);
-
-//     const membership_status = clean(req.body.membership_status || "active", 50);
-//     const status = clean(req.body.status || "active", 50);
-//     const is_active = toBool01(req.body.is_active, 1);
-
-//     const open_balance = toMoney(req.body.open_balance, 0);
-//     const total_paid = toMoney(req.body.total_paid, 0);
-//     const notes = nullable(req.body.notes, 5000);
-
-//     await pool.query(
-//       `
-//       UPDATE tbl_members
-//       SET
-//         first_name = ?,
-//         last_name = ?,
-//         full_name = ?,
-//         email = ?,
-//         phone = ?,
-//         address_line1 = ?,
-//         address_line2 = ?,
-//         city = ?,
-//         state = ?,
-//         zip = ?,
-//         status = ?,
-//         membership_status = ?,
-//         is_active = ?,
-//         open_balance = ?,
-//         total_paid = ?,
-//         notes = ?,
-//         updated_at = NOW()
-//       WHERE id = ?
-//       `,
-//       [
-//         first_name,
-//         last_name,
-//         full_name,
-//         email,
-//         phone,
-//         address_line1,
-//         address_line2,
-//         city,
-//         state,
-//         zip,
-//         status,
-//         membership_status,
-//         is_active,
-//         open_balance,
-//         total_paid,
-//         notes,
-//         id,
-//       ]
-//     );
-
-//     return res.json({
-//       ok: true,
-//       message: "Member updated successfully.",
-//     });
-//   } catch (err) {
-//     console.error("PUT /finance/members/:id error:", err);
-//     return res.status(500).json({ error: "Failed to update member." });
-//   }
-// });
-
-// router.patch(
-//   "/members/:id/deactivate",
-//   authRequired,
-//   requireRole("admin"),
-//   async (req, res) => {
-//     try {
-//       const id = toId(req.params.id);
-//       if (!id) return res.status(400).json({ error: "Invalid member id." });
-
-//       await pool.query(
-//         `
-//         UPDATE tbl_members
-//         SET
-//           is_active = 0,
-//           status = 'inactive',
-//           membership_status = 'inactive',
-//           updated_at = NOW()
-//         WHERE id = ?
-//         `,
-//         [id]
-//       );
-
-//       return res.json({
-//         ok: true,
-//         message: "Member deactivated successfully.",
-//       });
-//     } catch (err) {
-//       console.error("PATCH /finance/members/:id/deactivate error:", err);
-//       return res.status(500).json({ error: "Failed to deactivate member." });
-//     }
-//   }
-// );
-
-// module.exports = router;
 
 // backend/routes/financeMembers.js
 "use strict";
@@ -630,6 +97,38 @@ function memberNumber() {
 
   return `HT-${Date.now()}`;
 }
+
+function monthName(month) {
+  return [
+    "",
+    "January",
+    "February",
+    "March",
+    "April",
+    "May",
+    "June",
+    "July",
+    "August",
+    "September",
+    "October",
+    "November",
+    "December",
+  ][Number(month)] || String(month);
+}
+
+function formatCoverageLabel(
+  year,
+  startMonth,
+  endMonth
+) {
+  if (!year || !startMonth || !endMonth) {
+    return "";
+  }
+
+  return `${monthName(startMonth)} ${year} - ${monthName(endMonth)} ${year}`;
+}
+
+
 
 /* =========================================================
    LIST MEMBERS (ENTERPRISE)
@@ -877,6 +376,8 @@ router.get(
     }
   }
 );
+
+
 /* =========================================================
    GET MEMBER
 ========================================================= */
@@ -896,13 +397,19 @@ router.get(
           pool,
 
           `
-          SELECT *
-
-          FROM tbl_members
-
-          WHERE id = ?
-
-          LIMIT 1
+          SELECT
+  m.*,
+  u.id AS user_id,
+  u.username,
+  u.account_status,
+  u.must_change_password,
+  u.password_reset_required,
+  u.welcome_email_status
+FROM tbl_members m
+LEFT JOIN tbl_users u
+  ON u.id = m.user_id
+WHERE m.id = ?
+LIMIT 1
           `,
 
           [req.params.id]
@@ -940,7 +447,313 @@ router.get(
   }
 );
 
+/* =========================================================
+   MEMBER COVERAGE
+========================================================= */
 
+router.get(
+  "/members/:id/coverage",
+  authRequired,
+  requireRole(
+    "finance",
+    "admin",
+    "super_admin"
+  ),
+  async (req, res) => {
+    try {
+      const memberId = Number(req.params.id);
+
+      if (!memberId) {
+        return res.status(400).json({
+          ok: false,
+          error: "Invalid member id.",
+        });
+      }
+
+      const year = Number(
+        req.query.year ||
+        new Date().getFullYear()
+      );
+
+      const [rows] = await pool.query(
+        `
+        SELECT
+          c.payment_id,
+
+          MAX(c.payment_number) AS payment_number,
+
+          MIN(c.month_number) AS start_month,
+
+          MAX(c.month_number) AS end_month,
+
+          COUNT(*) AS months_paid,
+
+          SUM(c.amount) AS amount,
+
+          MAX(c.coverage_year) AS coverage_year,
+
+          MAX(p.plan_name) AS plan_name,
+
+          MAX(p.coverage_start_month) AS coverage_start_month,
+
+          MAX(p.coverage_end_month) AS coverage_end_month,
+
+          MAX(p.paid_at) AS paid_at,
+
+          MAX(m.next_due_at) AS next_due_at
+
+        FROM tbl_member_membership_coverage c
+
+        LEFT JOIN tbl_finance_payments p
+          ON p.id = c.payment_id
+
+        LEFT JOIN tbl_members m
+          ON m.id = c.member_id
+
+        WHERE c.member_id = ?
+          AND c.coverage_year = ?
+          AND LOWER(COALESCE(c.status,'')) IN (
+            'paid',
+            'completed',
+            'posted'
+          )
+
+        GROUP BY c.payment_id
+
+        ORDER BY
+          MIN(c.month_number) ASC,
+          c.payment_id ASC
+        `,
+        [memberId, year]
+      );
+
+      const paidMonths = [
+        ...new Set(
+          rows.flatMap((row) => {
+            const start =
+              Number(row.start_month || 0);
+
+            const end =
+              Number(row.end_month || 0);
+
+            if (
+              start < 1 ||
+              start > 12 ||
+              end < 1 ||
+              end > 12 ||
+              end < start
+            ) {
+              return [];
+            }
+
+            return Array.from(
+              { length: end - start + 1 },
+              (_, index) =>
+                start + index
+            );
+          })
+        ),
+      ].sort((a, b) => a - b);
+
+      const totalAmount =
+        rows.reduce(
+          (sum, row) =>
+            sum +
+            Number(row.amount || 0),
+          0
+        );
+
+      const totalMonths =
+        paidMonths.length;
+
+      const startMonth =
+        paidMonths[0] || null;
+
+      const endMonth =
+        paidMonths[
+          paidMonths.length - 1
+        ] || null;
+
+      const nextMonth =
+        endMonth === 12
+          ? 1
+          : endMonth + 1;
+
+      const nextYear =
+        endMonth === 12
+          ? year + 1
+          : year;
+
+      const nextDueAt =
+        startMonth && endMonth
+          ? `${nextYear}-${String(
+              nextMonth
+            ).padStart(2, "0")}-01`
+          : null;
+
+      const coveragePercent =
+        Math.round(
+          (paidMonths.length / 12) *
+            100
+        );
+
+      const monthNames = [
+        "January",
+        "February",
+        "March",
+        "April",
+        "May",
+        "June",
+        "July",
+        "August",
+        "September",
+        "October",
+        "November",
+        "December",
+      ];
+
+      const paidThrough =
+        endMonth
+          ? `${monthNames[endMonth - 1]} ${year}`
+          : null;
+
+      let renewalStatus =
+        "current";
+
+      if (
+        paidMonths.length === 0
+      ) {
+        renewalStatus =
+          "overdue";
+      } else if (
+        paidMonths.length <= 2
+      ) {
+        renewalStatus =
+          "expiring";
+      }
+
+      const planName =
+        rows[
+          rows.length - 1
+        ]?.plan_name ||
+        rows[0]?.plan_name ||
+        "Membership";
+
+      const coverage =
+        rows.length > 0
+          ? {
+              coverage_year: year,
+
+              plan_name: planName,
+
+              coverage_start_month:
+                startMonth,
+
+              coverage_end_month:
+                endMonth,
+
+              start_month:
+                startMonth,
+
+              end_month:
+                endMonth,
+
+              months_paid:
+                totalMonths,
+
+              amount: Number(
+                totalAmount.toFixed(2)
+              ),
+
+              paid_months:
+                paidMonths,
+
+              coverage_months:
+                paidMonths,
+
+              coverage_months_json:
+                JSON.stringify(
+                  paidMonths
+                ),
+
+              coverage_percent:
+                coveragePercent,
+
+              paid_through:
+                paidThrough,
+
+              renewal_status:
+                renewalStatus,
+
+              next_due_at:
+                nextDueAt,
+
+              coverage_label:
+                formatCoverageLabel(
+                  year,
+                  startMonth,
+                  endMonth
+                ),
+            }
+          : null;
+
+      const formatted =
+        rows.map((row) => ({
+          ...row,
+
+          coverage_start_month:
+            Number(
+              row.start_month || 0
+            ),
+
+          coverage_end_month:
+            Number(
+              row.end_month || 0
+            ),
+
+          months_paid:
+            Number(
+              row.months_paid || 0
+            ),
+
+          amount:
+            Number(
+              row.amount || 0
+            ),
+
+          plan_name:
+            row.plan_name ||
+            "Membership",
+
+          coverage_label:
+            formatCoverageLabel(
+              row.coverage_year ||
+                year,
+              row.start_month,
+              row.end_month
+            ),
+        }));
+
+      return res.json({
+        ok: true,
+        year,
+        coverage,
+        rows: formatted,
+      });
+    } catch (err) {
+      console.error(
+        "coverage error:",
+        err
+      );
+
+      return res.status(500).json({
+        ok: false,
+        error:
+          "Failed to load coverage.",
+      });
+    }
+  }
+);
 
 router.post(
   "/register-new-member",
@@ -976,76 +789,222 @@ router.post(
    UPDATE MEMBER
 ========================================================= */
 
+// router.put(
+//   "/members/:id",
+
+//   authRequired,
+
+//   requireRole(
+//     "finance",
+//     "admin",
+//     "super_admin"
+//   ),
+
+//   async (req, res) => {
+
+//     try {
+
+//       await updateExistingColumns(
+
+//         pool,
+
+//         "tbl_members",
+
+//         {
+
+//           full_name:
+//             req.body.full_name,
+
+//           baptismal_name:
+//             req.body.baptismal_name,
+
+//           email:
+//             req.body.email,
+
+//           phone:
+//             req.body.phone,
+
+//           address:
+//             req.body.address,
+
+//           membership_status:
+//             req.body.membership_status,
+
+//           updated_at:
+//             mysqlNow(),
+//         },
+
+//         "id = ?",
+
+//         [req.params.id]
+//       );
+
+//       return res.json({
+
+//         ok: true,
+//       });
+
+//     } catch (err) {
+
+//       console.error(
+//         "update member error:",
+//         err
+//       );
+
+//       return res.status(500).json({
+
+//         error:
+//           "Failed to update member.",
+//       });
+//     }
+//   }
+// );
+async function updateMemberHandler(
+  req,
+  res
+) {
+  try {
+
+ await updateExistingColumns(
+  pool,
+  "tbl_members",
+  {
+    first_name: req.body.first_name,
+    last_name: req.body.last_name,
+
+    full_name:
+      req.body.full_name ||
+      `${req.body.first_name || ""} ${req.body.last_name || ""}`.trim(),
+
+    email: req.body.email,
+    phone: req.body.phone,
+    gender: req.body.gender,
+
+    address_line1: req.body.address,
+
+    city: req.body.city,
+    state: req.body.state,
+    zip: req.body.zip,
+
+    household_role:
+      req.body.household_type,
+
+    membership_status:
+      req.body.membership_status,
+
+    updated_at: mysqlNow(),
+  },
+  "id = ?",
+  [req.params.id]
+);
+    return res.json({
+      ok: true,
+    });
+
+  } catch (err) {
+
+    console.error(
+      "update member error:",
+      err
+    );
+
+    return res.status(500).json({
+      error:
+        "Failed to update member.",
+    });
+  }
+}
+
 router.put(
   "/members/:id",
-
   authRequired,
-
   requireRole(
     "finance",
     "admin",
     "super_admin"
   ),
-
-  async (req, res) => {
-
-    try {
-
-      await updateExistingColumns(
-
-        pool,
-
-        "tbl_members",
-
-        {
-
-          full_name:
-            req.body.full_name,
-
-          baptismal_name:
-            req.body.baptismal_name,
-
-          email:
-            req.body.email,
-
-          phone:
-            req.body.phone,
-
-          address:
-            req.body.address,
-
-          membership_status:
-            req.body.membership_status,
-
-          updated_at:
-            mysqlNow(),
-        },
-
-        "id = ?",
-
-        [req.params.id]
-      );
-
-      return res.json({
-
-        ok: true,
-      });
-
-    } catch (err) {
-
-      console.error(
-        "update member error:",
-        err
-      );
-
-      return res.status(500).json({
-
-        error:
-          "Failed to update member.",
-      });
-    }
-  }
+  updateMemberHandler
 );
+
+router.patch(
+  "/members/:id",
+  authRequired,
+  requireRole(
+    "finance",
+    "admin",
+    "super_admin"
+  ),
+  updateMemberHandler
+);
+/* =========================================================
+   PATCH MEMBER
+========================================================= */
+
+// router.patch(
+//   "/members/:id",
+
+//   authRequired,
+
+//   requireRole(
+//     "finance",
+//     "admin",
+//     "super_admin"
+//   ),
+
+//   async (req, res) => {
+//     try {
+
+//       await updateExistingColumns(
+//         pool,
+
+//         "tbl_members",
+
+//         {
+//           full_name:
+//             req.body.full_name,
+
+//           baptismal_name:
+//             req.body.baptismal_name,
+
+//           email:
+//             req.body.email,
+
+//           phone:
+//             req.body.phone,
+
+//           address:
+//             req.body.address,
+
+//           membership_status:
+//             req.body.membership_status,
+
+//           updated_at:
+//             mysqlNow(),
+//         },
+
+//         "id = ?",
+
+//         [req.params.id]
+//       );
+
+//       return res.json({
+//         ok: true,
+//       });
+
+//     } catch (err) {
+
+//       console.error(
+//         "patch member error:",
+//         err
+//       );
+
+//       return res.status(500).json({
+//         error:
+//           "Failed to update member.",
+//       });
+//     }
+//   }
+// );
 
 /* =========================================================
    DELETE MEMBER

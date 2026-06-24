@@ -1,1186 +1,1107 @@
-
-// frontend/src/components/MembershipDashboard/pages/MembershipRenewal.jsx
-
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
+import React, { useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  CheckCircle2,
+  CreditCard,
+  Loader2,
+  RefreshCcw,
+  Repeat,
+  ShieldCheck,
+  WalletCards,
+  XCircle,
+} from "lucide-react";
 
 import api from "../../api";
-import "../../../styles/membership-dashboard.css";
+import "../../../styles/member-dashboard.css";
 
 const MONTHS = [
-  { n: 1, short: "Jan", label: "January" },
-  { n: 2, short: "Feb", label: "February" },
-  { n: 3, short: "Mar", label: "March" },
-  { n: 4, short: "Apr", label: "April" },
-  { n: 5, short: "May", label: "May" },
-  { n: 6, short: "Jun", label: "June" },
-  { n: 7, short: "Jul", label: "July" },
-  { n: 8, short: "Aug", label: "August" },
-  { n: 9, short: "Sep", label: "September" },
-  { n: 10, short: "Oct", label: "October" },
-  { n: 11, short: "Nov", label: "November" },
-  { n: 12, short: "Dec", label: "December" },
+  { index: 1, short: "Jan", label: "January" },
+  { index: 2, short: "Feb", label: "February" },
+  { index: 3, short: "Mar", label: "March" },
+  { index: 4, short: "Apr", label: "April" },
+  { index: 5, short: "May", label: "May" },
+  { index: 6, short: "Jun", label: "June" },
+  { index: 7, short: "Jul", label: "July" },
+  { index: 8, short: "Aug", label: "August" },
+  { index: 9, short: "Sep", label: "September" },
+  { index: 10, short: "Oct", label: "October" },
+  { index: 11, short: "Nov", label: "November" },
+  { index: 12, short: "Dec", label: "December" },
 ];
 
-const FALLBACK_PLANS = [
-  { id: "monthly", label: "Monthly Membership", months: 1, amount: 50 },
-  { id: "quarterly", label: "3-Month Membership", months: 3, amount: 150 },
-  { id: "semi_annual", label: "6-Month Membership", months: 6, amount: 300 },
-  { id: "annual", label: "Yearly Membership", months: 12, amount: 600 },
+const PROFILE_ENDPOINTS = ["/membership/me", "/membership/profile", "/member/profile"];
+const PLAN_ENDPOINTS = ["/dues/plans", "/membership/plans", "/membership/dues-plans"];
+const COVERAGE_ENDPOINTS = [
+  "/membership/coverage",
+  "/membership/my-coverage",
+  "/member/membership-coverage",
 ];
+const SUBSCRIPTION_ENDPOINTS = [
+  "/subscription/me",
+  "/membership/subscription",
+  "/member/subscription",
+];
+
+const CHECKOUT_ENDPOINTS = [
+  "/checkout/member",
+  "/checkout/self-service",
+  "/checkout",
+  "/payments/member/checkout",
+  "/payments/checkout",
+];
+
+const SUBSCRIPTION_SETUP_ENDPOINTS = [
+  "/subscription/checkout",
+  "/subscription/create-checkout",
+  "/subscription/setup",
+  "/membership/subscription/checkout",
+  "/membership/subscription/setup",
+];
+
+const SUBSCRIPTION_CANCEL_ENDPOINTS = [
+  "/subscription/cancel",
+  "/membership/subscription/cancel",
+  "/member/subscription/cancel",
+];
+
+function clean(value, fallback = "--") {
+  const text = value === null || value === undefined ? "" : String(value).trim();
+  return text || fallback;
+}
+
+function numberValue(value, fallback = 0) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : fallback;
+}
+
+function boolValue(value) {
+  if (value === true || value === 1) return true;
+  const text = String(value || "").toLowerCase();
+  return ["1", "true", "yes", "active", "enabled"].includes(text);
+}
+
+function roundMoney(value) {
+  return Math.round((numberValue(value) + Number.EPSILON) * 100) / 100;
+}
 
 function money(value) {
-  return `$${Number(value || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return roundMoney(value).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
+
+function todayIso() {
+  return new Date().toISOString().slice(0, 10);
+}
+
+function parseDate(value) {
+  if (!value) return null;
+  const date = new Date(value);
+  return Number.isNaN(date.getTime()) ? null : date;
 }
 
 function formatDate(value) {
-  if (!value) return "--";
-  const d = new Date(value);
-  return Number.isNaN(d.getTime())
-    ? "--"
-    : d.toLocaleDateString("en-US");
+  const date = parseDate(value);
+  if (!date) return "--";
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
 }
 
-function normalizePlan(row = {}) {
-  const planKey = String(
-    row.billing_cycle ||
-      row.plan_code ||
-      row.plan_key ||
-      ""
-  ).toLowerCase();
-
-  const months =
-    Number(row.duration_months) ||
-    Number(row.months) ||
-    Number(row.interval_count) ||
-    (planKey.includes("12")
-      ? 12
-      : planKey.includes("6")
-      ? 6
-      : planKey.includes("3")
-      ? 3
-      : 1);
-
-  return {
-    id: row.id,
-    label:
-      row.plan_name ||
-      row.name ||
-      `${months} Month Membership`,
-    months,
-    amount: Number(
-      row.minimum_amount ||
-        row.amount ||
-        row.current_amount ||
-        0
-    ),
-    planCode:
-      row.plan_code ||
-      row.billing_cycle ||
-      row.plan_key ||
-      null,
-    raw: row,
-  };
+function monthKey(year, monthIndex) {
+  return `${year}-${String(monthIndex).padStart(2, "0")}`;
 }
 
-function normalizeRows(data) {
-  if (Array.isArray(data?.rows)) return data.rows;
-  if (Array.isArray(data?.grid)) return data.grid;
-  if (Array.isArray(data?.data)) return data.data;
-  if (Array.isArray(data?.items)) return data.items;
+function monthDateFromKey(key) {
+  const [year, month] = String(key || "").split("-").map(Number);
+  if (!year || !month) return null;
+  return new Date(year, month - 1, 1);
+}
+
+function monthLabelFromKey(key) {
+  const date = monthDateFromKey(key);
+  if (!date) return clean(key);
+  return date.toLocaleDateString("en-US", {
+    month: "long",
+    year: "numeric",
+  });
+}
+
+function firstValue(row, keys, fallback = "") {
+  for (const key of keys) {
+    if (row && row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
+  return fallback;
+}
+
+function unwrapObject(payload) {
+  const data = payload?.data ?? payload;
+  if (data?.data && !Array.isArray(data.data)) return data.data;
+  if (data?.profile) return data.profile;
+  if (data?.member) return data.member;
+  if (data?.user) return data.user;
+  return data || {};
+}
+
+function unwrapArray(payload, keys = []) {
+  const data = payload?.data ?? payload;
+
   if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+
+  for (const key of keys) {
+    if (Array.isArray(data?.[key])) return data[key];
+    if (Array.isArray(data?.data?.[key])) return data.data[key];
+  }
+
   return [];
 }
 
-function checkoutUrl(data) {
+async function getFirst(endpoints, config = {}) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(endpoint, config);
+      return response;
+    } catch (error) {
+      const status = error?.response?.status;
+      lastError = error;
+
+      if (![404, 405].includes(status)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No available API route.");
+}
+
+async function postFirst(endpoints, payload) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.post(endpoint, payload);
+      return response;
+    } catch (error) {
+      const status = error?.response?.status;
+      lastError = error;
+
+      if (![404, 405].includes(status)) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No available API route.");
+}
+
+function responseCheckoutUrl(response) {
+  const data = response?.data || {};
   return (
-    data?.url ||
-    data?.checkout_url ||
-    data?.checkoutUrl ||
-    data?.session_url ||
-    data?.sessionUrl ||
+    data.url ||
+    data.checkout_url ||
+    data.checkoutUrl ||
+    data.payment_link ||
+    data.paymentLink ||
+    data.session_url ||
+    data.data?.url ||
+    data.data?.checkout_url ||
+    data.data?.payment_link ||
     ""
   );
 }
 
-function monthObj(monthNumber) {
+function redirectToCheckout(url) {
+  if (!url) return false;
+  window.location.assign(url);
+  return true;
+}
+
+function memberId(profile) {
+  return firstValue(profile, ["member_id", "id", "user_id"], null);
+}
+
+function memberNo(profile) {
+  return firstValue(profile, ["member_no", "member_number", "memberId"], "");
+}
+
+function memberName(profile) {
+  const full = firstValue(profile, ["full_name", "name"], "");
+  if (full) return full;
+
+  return [profile?.first_name, profile?.last_name].filter(Boolean).join(" ") || "Member";
+}
+
+function memberEmail(profile) {
+  return firstValue(profile, ["email", "member_email"], "");
+}
+
+function memberPhone(profile) {
+  return firstValue(profile, ["phone", "mobile", "member_phone"], "");
+}
+
+function memberStartDate(profile) {
   return (
-    MONTHS.find(
-      (m) => Number(m.n) === Number(monthNumber)
-    ) || MONTHS[0]
+    firstValue(profile, [
+      "membership_start_date",
+      "start_date",
+      "joined_at",
+      "registration_date",
+      "created_at",
+    ]) || todayIso()
   );
 }
 
-function monthLabel(monthNumber, year, short = true) {
-  const m = monthObj(monthNumber);
-  return `${short ? m.short : m.label} ${year}`;
+function planId(plan) {
+  return String(firstValue(plan, ["id", "plan_id", "membership_plan_id"], ""));
 }
 
-function monthsBetween(fromMonth, fromYear, toMonth, toYear) {
-  const startIndex =
-    Number(fromYear) * 12 +
-    Number(fromMonth);
+function planName(plan) {
+  return clean(firstValue(plan, ["name", "plan_name", "title"], "Membership Plan"));
+}
 
-  const endIndex =
-    Number(toYear) * 12 +
-    Number(toMonth);
-
-  return Math.max(
-    1,
-    endIndex - startIndex + 1
+function planAmount(plan) {
+  return roundMoney(
+    firstValue(plan, ["amount", "price", "monthly_amount", "membership_amount", "total_amount"], 0)
   );
 }
 
-function buildMonthRange(fromMonth, fromYear, toMonth, toYear) {
-  const list = [];
+function planDurationMonths(plan) {
+  const direct = numberValue(
+    firstValue(plan, ["duration_months", "months", "coverage_months", "term_months"], 0)
+  );
 
-  let cursor =
-    new Date(
-      Number(fromYear),
-      Number(fromMonth) - 1,
-      1
-    );
+  if (direct > 0) return direct;
 
-  const end =
-    new Date(
-      Number(toYear),
-      Number(toMonth) - 1,
-      1
-    );
+  const cycle = String(firstValue(plan, ["billing_cycle", "cycle", "interval"], "")).toLowerCase();
 
-  while (cursor <= end) {
-    const year =
-      cursor.getFullYear();
+  if (cycle.includes("annual") || cycle.includes("year")) return 12;
+  if (cycle.includes("semi")) return 6;
+  if (cycle.includes("quarter")) return 3;
 
-    const month =
-      cursor.getMonth() + 1;
-
-    list.push({
-      month,
-      year,
-      key: `${year}-${String(month).padStart(2, "0")}`,
-      label: monthLabel(month, year),
-      short: monthObj(month).short,
-    });
-
-    cursor =
-      new Date(
-        cursor.getFullYear(),
-        cursor.getMonth() + 1,
-        1
-      );
-  }
-
-  return list;
+  return 1;
 }
 
-function getPaidMap(grid = []) {
-  const map = new Map();
-
-  grid.forEach((row) => {
-    const monthNumber =
-      Number(row.month_number || row.month || 0);
-
-    const paid =
-      row.paid === true ||
-      [
-        "paid",
-        "completed",
-        "posted",
-        "approved",
-      ].includes(
-        String(
-          row.status ||
-            row.coverage_status ||
-            ""
-        ).toLowerCase()
-      );
-
-    if (
-      monthNumber >= 1 &&
-      monthNumber <= 12
-    ) {
-      map.set(monthNumber, paid);
-    }
-  });
-
-  return map;
+function planMonthlyRate(plan) {
+  const duration = Math.max(1, planDurationMonths(plan));
+  return roundMoney(planAmount(plan) / duration);
 }
 
-function getFirstGap(grid = []) {
-  const paid =
-    getPaidMap(grid);
+function isPlanActive(plan) {
+  const raw = firstValue(plan, ["is_active", "active", "status"], "active");
+  return raw === 1 || raw === true || String(raw).toLowerCase() === "active";
+}
 
-  let start = null;
-  let end = null;
+function coverageKey(row) {
+  const direct = firstValue(row, [
+    "month_key",
+    "coverage_month",
+    "month",
+    "period_month",
+    "coverage_period",
+  ]);
 
-  for (let i = 1; i <= 12; i += 1) {
-    if (!paid.get(i)) {
-      if (!start) start = i;
-      end = i;
-    } else if (start) {
-      break;
-    }
+  if (/^\d{4}-\d{2}$/.test(String(direct))) return String(direct);
+
+  const startDate = parseDate(
+    firstValue(row, ["coverage_start_date", "start_date", "period_start", "paid_for_month"], "")
+  );
+
+  if (startDate) {
+    return monthKey(startDate.getFullYear(), startDate.getMonth() + 1);
   }
 
-  return {
-    start,
-    end,
-  };
+  const year = numberValue(firstValue(row, ["year", "coverage_year"], 0));
+  const month = numberValue(firstValue(row, ["month_number", "coverage_month_number"], 0));
+
+  if (year && month) return monthKey(year, month);
+
+  return "";
+}
+
+function coverageStatus(row) {
+  const status = String(
+    firstValue(row, ["status", "coverage_status", "payment_status", "invoice_status"], "")
+  ).toLowerCase();
+
+  if (["paid", "active", "covered", "complete", "completed"].includes(status)) return "paid";
+  if (["pending", "open", "processing", "invoiced"].includes(status)) return "pending";
+  if (["failed", "cancelled", "canceled", "void", "refunded"].includes(status)) return "open";
+
+  return numberValue(firstValue(row, ["paid_amount", "amount_paid"], 0)) > 0 ? "paid" : "open";
+}
+
+function unwrapCoverageRows(payload) {
+  const data = payload?.data ?? payload;
+
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.data)) return data.data;
+
+  const keys = [
+    "months",
+    "coverage_months",
+    "coverage",
+    "rows",
+    "items",
+    "records",
+    "payments",
+  ];
+
+  for (const key of keys) {
+    if (Array.isArray(data?.[key])) return data[key];
+    if (Array.isArray(data?.data?.[key])) return data.data[key];
+  }
+
+  if (data?.by_month && typeof data.by_month === "object") {
+    return Object.entries(data.by_month).map(([key, value]) => ({
+      month_key: key,
+      ...(typeof value === "object" ? value : { status: value }),
+    }));
+  }
+
+  return [];
+}
+
+function subscriptionStatus(subscription) {
+  return String(
+    firstValue(subscription, ["status", "subscription_status", "stripe_status"], "inactive")
+  ).toLowerCase();
+}
+
+function subscriptionActive(subscription) {
+  return ["active", "trialing", "past_due"].includes(subscriptionStatus(subscription));
+}
+
+function processingFee(amount, method) {
+  const base = roundMoney(amount);
+
+  if (base <= 0) return 0;
+
+  if (method === "ach") {
+    return roundMoney(Math.min(base * 0.008, 5));
+  }
+
+  return roundMoney(base / (1 - 0.029) + 0.3 - base);
+}
+
+function makeReference(prefix = "MEM-RENEW") {
+  const random =
+    typeof crypto !== "undefined" && crypto.randomUUID
+      ? crypto.randomUUID().slice(0, 8).toUpperCase()
+      : Math.random().toString(36).slice(2, 10).toUpperCase();
+
+  return `${prefix}-${Date.now()}-${random}`;
 }
 
 export default function MembershipRenewal() {
-  const currentYear =
-    new Date().getFullYear();
+  const currentYear = new Date().getFullYear();
 
-  const yearOptions =
-    useMemo(
-      () =>
-        Array.from(
-          { length: 12 },
-          (_, i) => currentYear - 3 + i
-        ),
-      [currentYear]
-    );
+  const [profile, setProfile] = useState({});
+  const [plans, setPlans] = useState([]);
+  const [coverageRows, setCoverageRows] = useState([]);
+  const [subscription, setSubscription] = useState({});
 
-  const [plans, setPlans] =
-    useState(FALLBACK_PLANS);
+  const [selectedYear, setSelectedYear] = useState(currentYear);
+  const [selectedPlanId, setSelectedPlanId] = useState("");
+  const [paymentMethod, setPaymentMethod] = useState("card");
+  const [selectedMonthKeys, setSelectedMonthKeys] = useState([]);
 
-  const [selected, setSelected] =
-    useState(FALLBACK_PLANS[0]);
+  const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState("");
+  const [error, setError] = useState("");
+  const [notice, setNotice] = useState("");
 
-  const [summary, setSummary] =
-    useState(null);
+  const activePlans = useMemo(() => plans.filter(isPlanActive), [plans]);
 
-  const [coverageGrid, setCoverageGrid] =
-    useState([]);
+  const selectedPlan = useMemo(() => {
+    return activePlans.find((plan) => planId(plan) === selectedPlanId) || activePlans[0] || {};
+  }, [activePlans, selectedPlanId]);
 
-  const [subscription, setSubscription] =
-    useState(null);
+  const selectedPlanDuration = Math.max(1, planDurationMonths(selectedPlan));
+  const selectedPlanMonthlyRate = planMonthlyRate(selectedPlan);
 
-  const [renewalType, setRenewalType] =
-    useState("recommended");
+  const startDate = useMemo(() => parseDate(memberStartDate(profile)) || new Date(), [profile]);
+  const startYear = startDate.getFullYear();
 
-  const [fromMonth, setFromMonth] =
-    useState(new Date().getMonth() + 1);
+  const yearOptions = useMemo(() => {
+    const first = Math.min(startYear, currentYear);
+    const last = Math.max(currentYear + 1, startYear + 1);
+    const years = [];
 
-  const [fromYear, setFromYear] =
-    useState(currentYear);
+    for (let year = first; year <= last; year += 1) {
+      years.push(year);
+    }
 
-  const [toMonth, setToMonth] =
-    useState(new Date().getMonth() + 1);
+    return years;
+  }, [currentYear, startYear]);
 
-  const [toYear, setToYear] =
-    useState(currentYear);
+  const coverageMap = useMemo(() => {
+    const map = new Map();
 
-  const [loading, setLoading] =
-    useState(false);
+    for (const row of coverageRows) {
+      const key = coverageKey(row);
+      if (!key) continue;
 
-  const [pageLoading, setPageLoading] =
-    useState(true);
+      const existing = map.get(key);
+      const nextStatus = coverageStatus(row);
 
-  const [savingAutoRenew, setSavingAutoRenew] =
-    useState(false);
-
-  const [error, setError] =
-    useState("");
-
-  useEffect(() => {
-    loadData(fromYear);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  async function loadData(year = fromYear) {
-    try {
-      setPageLoading(true);
-      setError("");
-
-      const [
-        plansRes,
-        summaryRes,
-        gridRes,
-        subscriptionRes,
-      ] = await Promise.allSettled([
-        api.get("/dues/plans"),
-        api.get("/member/summary"),
-        api.get(`/member/membership-grid/${year}`),
-        api.get("/subscription/current"),
-      ]);
-
-      if (plansRes.status === "fulfilled") {
-        const backendPlans =
-          Array.isArray(
-            plansRes.value.data?.rows
-          )
-            ? plansRes.value.data.rows.map(
-                normalizePlan
-              )
-            : [];
-
-        const finalPlans =
-          backendPlans.length
-            ? backendPlans
-            : FALLBACK_PLANS;
-
-        setPlans(finalPlans);
-
-        setSelected((current) => {
-          const match =
-            finalPlans.find(
-              (p) =>
-                String(p.id) ===
-                String(current?.id)
-            );
-
-          return match || finalPlans[0];
+      if (!existing || existing.status !== "paid") {
+        map.set(key, {
+          key,
+          status: nextStatus,
+          row,
         });
       }
-
-      if (summaryRes.status === "fulfilled") {
-        setSummary(
-          summaryRes.value.data?.summary ||
-            summaryRes.value.data ||
-            null
-        );
-      }
-
-      if (gridRes.status === "fulfilled") {
-        const grid =
-          normalizeRows(gridRes.value.data);
-
-        setCoverageGrid(grid);
-
-        const gap =
-          getFirstGap(grid);
-
-        if (gap.start && gap.end) {
-          setFromMonth(gap.start);
-          setFromYear(year);
-          setToMonth(gap.end);
-          setToYear(year);
-        }
-      }
-
-      if (
-        subscriptionRes.status ===
-        "fulfilled"
-      ) {
-        setSubscription(
-          subscriptionRes.value.data?.row ||
-            subscriptionRes.value.data
-              ?.subscription ||
-            null
-        );
-      }
-    } catch (err) {
-      console.error(
-        "Membership renewal load failed:",
-        err
-      );
-
-      setError(
-        err?.response?.data?.error ||
-          "Failed to load renewal information."
-      );
-    } finally {
-      setPageLoading(false);
-    }
-  }
-
-  const monthlyRate =
-    useMemo(() => {
-      const oneMonth =
-        plans.find(
-          (p) => Number(p.months) === 1
-        ) ||
-        plans.find((p) =>
-          String(
-            p.planCode || ""
-          )
-            .toLowerCase()
-            .includes("monthly")
-        );
-
-      if (oneMonth?.amount) {
-        return Number(oneMonth.amount);
-      }
-
-      return (
-        Number(selected?.amount || 0) /
-        Math.max(
-          Number(selected?.months || 1),
-          1
-        )
-      );
-    }, [plans, selected]);
-
-  const paidCount =
-    useMemo(() => {
-      return coverageGrid.filter((row) => {
-        return (
-          row.paid === true ||
-          [
-            "paid",
-            "completed",
-            "posted",
-            "approved",
-          ].includes(
-            String(
-              row.status ||
-                row.coverage_status ||
-                ""
-            ).toLowerCase()
-          )
-        );
-      }).length;
-    }, [coverageGrid]);
-
-  const unpaidCount =
-    Math.max(0, 12 - paidCount);
-
-  const recommendedGap =
-    useMemo(
-      () => getFirstGap(coverageGrid),
-      [coverageGrid]
-    );
-
-  function applyRecommendedGap() {
-    if (
-      recommendedGap.start &&
-      recommendedGap.end
-    ) {
-      setFromMonth(recommendedGap.start);
-      setToMonth(recommendedGap.end);
-      setToYear(fromYear);
     }
 
-    setRenewalType("recommended");
-  }
+    return map;
+  }, [coverageRows]);
 
-  function applyFullYear() {
-    setFromMonth(1);
-    setToMonth(12);
-    setToYear(fromYear);
-    setRenewalType("full_year");
-  }
+  const visibleMonths = useMemo(() => {
+    return MONTHS.map((month) => {
+      const key = monthKey(selectedYear, month.index);
+      const record = coverageMap.get(key);
 
-  function handleFromMonthChange(value) {
-    const next =
-      Number(value);
+      const beforeStartYear = selectedYear < startYear;
+      const beforeStartMonth =
+        selectedYear === startYear && month.index < startDate.getMonth() + 1;
 
-    setFromMonth(next);
-
-    const fromIndex =
-      Number(fromYear) * 12 + next;
-
-    const toIndex =
-      Number(toYear) * 12 +
-      Number(toMonth);
-
-    if (toIndex < fromIndex) {
-      setToMonth(next);
-      setToYear(fromYear);
-    }
-  }
-
-  function handleFromYearChange(value) {
-    const next =
-      Number(value);
-
-    setFromYear(next);
-
-    const fromIndex =
-      next * 12 + Number(fromMonth);
-
-    const toIndex =
-      Number(toYear) * 12 +
-      Number(toMonth);
-
-    if (toIndex < fromIndex) {
-      setToYear(next);
-      setToMonth(fromMonth);
-    }
-
-    loadData(next);
-  }
-
-  function handleToMonthChange(value) {
-    setToMonth(Number(value));
-  }
-
-  function handleToYearChange(value) {
-    setToYear(Number(value));
-  }
-
-  const activeRange =
-    useMemo(() => {
-      if (renewalType === "auto_renew") {
-        const now =
-          new Date();
-
-        const start =
-          new Date(
-            now.getFullYear(),
-            now.getMonth(),
-            1
-          );
-
-        const end =
-          new Date(
-            start.getFullYear(),
-            start.getMonth() +
-              Number(selected?.months || 1) -
-              1,
-            1
-          );
-
-        return {
-          fromMonth:
-            start.getMonth() + 1,
-          fromYear:
-            start.getFullYear(),
-          toMonth:
-            end.getMonth() + 1,
-          toYear:
-            end.getFullYear(),
-        };
-      }
+      const hidden = beforeStartYear || beforeStartMonth;
+      const status = hidden ? "not_available" : record?.status || "open";
 
       return {
-        fromMonth,
-        fromYear,
-        toMonth,
-        toYear,
+        ...month,
+        key,
+        hidden,
+        status,
+        selectable: !hidden && status === "open",
       };
-    }, [
-      renewalType,
-      selected,
-      fromMonth,
-      fromYear,
-      toMonth,
-      toYear,
-    ]);
+    }).filter((month) => !month.hidden);
+  }, [coverageMap, selectedYear, startDate, startYear]);
 
-  const monthsToPay =
-    useMemo(
-      () =>
-        monthsBetween(
-          activeRange.fromMonth,
-          activeRange.fromYear,
-          activeRange.toMonth,
-          activeRange.toYear
-        ),
-      [activeRange]
-    );
+  const visibleMonthsSignature = visibleMonths
+    .map((month) => `${month.key}:${month.status}`)
+    .join("|");
 
-  const calculatedAmount =
-    renewalType === "auto_renew"
-      ? Number(selected?.amount || 0)
-      : Number(
-          (
-            monthlyRate *
-            monthsToPay
-          ).toFixed(2)
-        );
-
-  const previewMonths =
-    useMemo(
-      () =>
-        buildMonthRange(
-          activeRange.fromMonth,
-          activeRange.fromYear,
-          activeRange.toMonth,
-          activeRange.toYear
-        ),
-      [activeRange]
-    );
-
-  const previewLabel =
-    previewMonths.length
-      ? `${previewMonths[0].label} - ${
-          previewMonths[
-            previewMonths.length - 1
-          ].label
-        }`
-      : "--";
-
-  const autoEnabled =
-    Number(
-      subscription?.auto_payment_enabled || 0
-    ) === 1 ||
-    Number(subscription?.auto_renew || 0) === 1;
-
-  async function handleToggleAutoRenew() {
-    try {
-      setSavingAutoRenew(true);
-      setError("");
-
-      await api.patch(
-        "/subscription/toggle-auto-payment",
-        {
-          enabled: !autoEnabled,
-        }
-      );
-
-      await loadData(fromYear);
-    } catch (err) {
-      console.error(
-        "Auto-renew update failed:",
-        err
-      );
-
-      setError(
-        err?.response?.data?.error ||
-          "Failed to update auto-renew setting."
-      );
-    } finally {
-      setSavingAutoRenew(false);
+  useEffect(() => {
+    if (activePlans.length && !selectedPlanId) {
+      setSelectedPlanId(planId(activePlans[0]));
     }
-  }
+  }, [activePlans, selectedPlanId]);
 
-  async function handleCheckout() {
+  useEffect(() => {
+    const availableKeys = visibleMonths
+      .filter((month) => month.selectable)
+      .map((month) => month.key);
+
+    setSelectedMonthKeys((current) => {
+      const cleaned = current.filter((key) => availableKeys.includes(key));
+
+      if (cleaned.length) {
+        return cleaned.slice(0, selectedPlanDuration);
+      }
+
+      return availableKeys.slice(0, selectedPlanDuration);
+    });
+  }, [selectedPlanDuration, visibleMonthsSignature]);
+
+  async function load() {
+    setLoading(true);
+    setError("");
+    setNotice("");
+
     try {
-      setLoading(true);
-      setError("");
+      const [profileResponse, planResponse, coverageResponse, subscriptionResponse] =
+        await Promise.allSettled([
+          getFirst(PROFILE_ENDPOINTS),
+          getFirst(PLAN_ENDPOINTS),
+          getFirst(COVERAGE_ENDPOINTS, { params: { year: selectedYear } }),
+          getFirst(SUBSCRIPTION_ENDPOINTS),
+        ]);
 
-      if (!selected?.id) {
-        throw new Error(
-          "Please select a membership plan."
-        );
+      if (profileResponse.status === "fulfilled") {
+        setProfile(unwrapObject(profileResponse.value));
       }
 
-      if (calculatedAmount <= 0) {
-        throw new Error(
-          "Payment amount is not configured."
-        );
+      if (planResponse.status === "fulfilled") {
+        setPlans(unwrapArray(planResponse.value, ["plans", "rows", "items", "records"]));
       }
 
-      const successUrl =
-        `${window.location.origin}/dash/membership/my-payments/history?status=success&session_id={CHECKOUT_SESSION_ID}`;
-
-      const cancelUrl =
-        `${window.location.origin}/dash/membership/my-payments/renewal?status=cancel`;
-
-      const isAutoRenew =
-        renewalType === "auto_renew";
-
-      const payload = {
-        type: "membership",
-        payment_type: "membership",
-        category: "membership",
-
-        renewal_type: renewalType,
-        custom_coverage: !isAutoRenew,
-
-        plan_id: selected.id,
-        dues_plan_id: selected.id,
-        plan_name: selected.label,
-        plan_code: selected.planCode,
-
-        amount: calculatedAmount,
-        total_amount: calculatedAmount,
-
-        coverage_year:
-          activeRange.fromYear,
-
-        coverage_start_month:
-          activeRange.fromMonth,
-
-        coverage_start_year:
-          activeRange.fromYear,
-
-        coverage_end_month:
-          activeRange.toMonth,
-
-        coverage_end_year:
-          activeRange.toYear,
-
-        coverage_label:
-          previewLabel,
-
-        duration_months:
-          monthsToPay,
-
-        months_paid:
-          monthsToPay,
-
-        interval_count:
-          isAutoRenew
-            ? selected.months
-            : monthsToPay,
-
-        interval_unit: "month",
-
-        auto_renew:
-          isAutoRenew,
-
-        auto_payment_enabled:
-          isAutoRenew,
-
-        subscription_enabled:
-          isAutoRenew,
-
-        is_recurring:
-          isAutoRenew,
-
-        recurring_frequency:
-          isAutoRenew
-            ? "monthly"
-            : "",
-
-        sub_category:
-          isAutoRenew
-            ? `${selected.label} Auto Renewal`
-            : `${previewLabel} Membership Renewal`,
-
-        success_url:
-          successUrl,
-
-        cancel_url:
-          cancelUrl,
-      };
-
-      const { data } =
-        await api.post(
-          "/checkout/create-session",
-          payload
-        );
-
-      const url =
-        checkoutUrl(data);
-
-      if (!url) {
-        throw new Error(
-          "Stripe checkout URL missing."
-        );
+      if (coverageResponse.status === "fulfilled") {
+        setCoverageRows(unwrapCoverageRows(coverageResponse.value));
       }
 
-      window.location.href =
-        url;
+      if (subscriptionResponse.status === "fulfilled") {
+        setSubscription(unwrapObject(subscriptionResponse.value));
+      }
+
+      if (profileResponse.status === "rejected") {
+        throw profileResponse.reason;
+      }
     } catch (err) {
-      console.error(
-        "Membership renewal checkout failed:",
-        err
-      );
-
+      console.error(err);
       setError(
-        err?.response?.data?.error ||
-          err.message ||
-          "Checkout failed."
+        err?.response?.data?.details ||
+          err?.response?.data?.error ||
+          "Unable to load membership renewal information."
       );
     } finally {
       setLoading(false);
     }
   }
 
-  return (
-    <div className="member-page renewal-page">
-      <div className="member-page-header">
-        <div>
-          <p className="member-page-eyebrow">
-            Membership Renewal
-          </p>
+  useEffect(() => {
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedYear]);
 
-          <h1>Renew Membership</h1>
+  const selectedBaseAmount = useMemo(() => {
+    const count = selectedMonthKeys.length;
 
-          <p>
-            Pay missing months, select a custom coverage period,
-            renew a full year, or start automatic subscription renewal.
-          </p>
-        </div>
+    if (!selectedPlan || !count) return 0;
 
-        <div className="member-page-actions">
-          <button
-            type="button"
-            className="member-link-btn"
-            onClick={() =>
-              loadData(fromYear)
-            }
-            disabled={pageLoading}
-          >
-            Refresh
-          </button>
+    if (count === selectedPlanDuration) {
+      return roundMoney(planAmount(selectedPlan));
+    }
+
+    return roundMoney(selectedPlanMonthlyRate * count);
+  }, [selectedMonthKeys.length, selectedPlan, selectedPlanDuration, selectedPlanMonthlyRate]);
+
+  const fee = processingFee(selectedBaseAmount, paymentMethod);
+  const totalAmount = roundMoney(selectedBaseAmount + fee);
+
+  const paidMonths = visibleMonths.filter((month) => month.status === "paid").length;
+  const pendingMonths = visibleMonths.filter((month) => month.status === "pending").length;
+  const openMonths = visibleMonths.filter((month) => month.status === "open").length;
+  const nextOpenMonth = visibleMonths.find((month) => month.status === "open");
+
+  function toggleMonth(key) {
+    const month = visibleMonths.find((item) => item.key === key);
+
+    if (!month?.selectable) return;
+
+    setSelectedMonthKeys((current) => {
+      if (current.includes(key)) {
+        return current.filter((item) => item !== key);
+      }
+
+      if (current.length >= selectedPlanDuration) {
+        return [...current.slice(1), key].sort();
+      }
+
+      return [...current, key].sort();
+    });
+  }
+
+  async function startRenewalCheckout() {
+    if (!memberId(profile) && !memberNo(profile)) {
+      setError("Member profile is missing. Please refresh and try again.");
+      return;
+    }
+
+    if (!selectedPlanId) {
+      setError("Please select a membership renewal plan.");
+      return;
+    }
+
+    if (!selectedMonthKeys.length) {
+      setError("No open renewal months are selected.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setActionLoading("checkout");
+
+    const reference = makeReference();
+
+    const lineItems = [
+      {
+        item_type: "membership",
+        type: "membership_renewal",
+        name: "Membership Renewal",
+        description: `${planName(selectedPlan)} - ${selectedMonthKeys
+          .map(monthLabelFromKey)
+          .join(", ")}`,
+        quantity: 1,
+        unit_amount: selectedBaseAmount,
+        amount: selectedBaseAmount,
+        category: "membership",
+      },
+    ];
+
+    if (fee > 0) {
+      lineItems.push({
+        item_type: "processing_fee",
+        type: "processing_fee",
+        name: paymentMethod === "ach" ? "ACH Processing Fee" : "Card Processing Fee",
+        quantity: 1,
+        unit_amount: fee,
+        amount: fee,
+        category: "processing_fee",
+      });
+    }
+
+    const payload = {
+      source: "member_dashboard",
+      checkout_context: "membership_renewal",
+      created_from: "member_membership_renewal",
+
+      payment_type: "membership",
+      category: "membership",
+      payment_method: paymentMethod,
+      method: paymentMethod,
+
+      member_id: memberId(profile),
+      member_no: memberNo(profile),
+      full_name: memberName(profile),
+      email: memberEmail(profile),
+      phone: memberPhone(profile),
+
+      plan_id: selectedPlanId,
+      membership_plan_id: selectedPlanId,
+      plan_name: planName(selectedPlan),
+      duration_months: selectedMonthKeys.length,
+      requested_plan_duration_months: selectedPlanDuration,
+
+      amount: selectedBaseAmount,
+      base_amount: selectedBaseAmount,
+      membership_amount: selectedBaseAmount,
+      subtotal_amount: selectedBaseAmount,
+      processing_fee: fee,
+      total_amount: totalAmount,
+
+      coverage_year: selectedYear,
+      coverage_months: selectedMonthKeys,
+      coverage_months_json: JSON.stringify(selectedMonthKeys),
+      coverage_start_month: selectedMonthKeys[0],
+      coverage_end_month: selectedMonthKeys[selectedMonthKeys.length - 1],
+      coverage_start_date: `${selectedMonthKeys[0]}-01`,
+      prevent_duplicate_coverage: true,
+
+      line_items: lineItems,
+      items: lineItems,
+
+      reference_no: reference,
+      client_reference_id: reference,
+      idempotency_key: reference,
+
+      create_invoice: true,
+      create_pdf: true,
+      send_invoice_email: true,
+      send_receipt_email: true,
+      attach_invoice_pdf: true,
+      attach_receipt_pdf: true,
+
+      success_url: `${window.location.origin}/dash/membership/membership-coverage?payment=success`,
+      cancel_url: `${window.location.origin}/dash/membership/membership-coverage?payment=cancelled`,
+    };
+
+    try {
+      const response = await postFirst(CHECKOUT_ENDPOINTS, payload);
+      const url = responseCheckoutUrl(response);
+
+      if (redirectToCheckout(url)) return;
+
+      setNotice("Renewal invoice was created. Please open your invoice email to complete payment.");
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.response?.data?.details ||
+          err?.response?.data?.error ||
+          "Unable to start membership renewal checkout."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function setupAutoRenewal() {
+    if (!selectedPlanId) {
+      setError("Please select a membership plan before setting up auto renewal.");
+      return;
+    }
+
+    setError("");
+    setNotice("");
+    setActionLoading("subscription");
+
+    const reference = makeReference("MEM-SUB");
+
+    const payload = {
+      source: "member_dashboard",
+      checkout_context: "membership_subscription",
+      payment_type: "membership",
+      category: "membership",
+
+      member_id: memberId(profile),
+      member_no: memberNo(profile),
+      full_name: memberName(profile),
+      email: memberEmail(profile),
+      phone: memberPhone(profile),
+
+      plan_id: selectedPlanId,
+      membership_plan_id: selectedPlanId,
+      plan_name: planName(selectedPlan),
+      duration_months: selectedPlanDuration,
+
+      payment_method: paymentMethod,
+      method: paymentMethod,
+      amount: planAmount(selectedPlan),
+      base_amount: planAmount(selectedPlan),
+      membership_amount: planAmount(selectedPlan),
+
+      reference_no: reference,
+      client_reference_id: reference,
+      idempotency_key: reference,
+
+      send_invoice_email: true,
+      send_receipt_email: true,
+
+      success_url: `${window.location.origin}/dash/membership/membership-coverage?subscription=success`,
+      cancel_url: `${window.location.origin}/dash/membership/membership-coverage?subscription=cancelled`,
+    };
+
+    try {
+      const response = await postFirst(SUBSCRIPTION_SETUP_ENDPOINTS, payload);
+      const url = responseCheckoutUrl(response);
+
+      if (redirectToCheckout(url)) return;
+
+      setNotice("Auto renewal settings were updated.");
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.response?.data?.details ||
+          err?.response?.data?.error ||
+          "Unable to set up auto renewal."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function cancelAutoRenewal() {
+    setError("");
+    setNotice("");
+    setActionLoading("cancel-subscription");
+
+    try {
+      await postFirst(SUBSCRIPTION_CANCEL_ENDPOINTS, {
+        member_id: memberId(profile),
+        member_no: memberNo(profile),
+        subscription_id: firstValue(subscription, ["id", "subscription_id", "stripe_subscription_id"]),
+        reason: "Cancelled by member from membership dashboard",
+      });
+
+      setNotice("Auto renewal was cancelled.");
+      await load();
+    } catch (err) {
+      console.error(err);
+      setError(
+        err?.response?.data?.details ||
+          err?.response?.data?.error ||
+          "Unable to cancel auto renewal."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  if (loading) {
+    return (
+      <div className="member-dashboard-page">
+        <div className="member-loading-state">
+          <Loader2 size={20} className="member-spin" />
+          Loading membership renewal...
         </div>
       </div>
+    );
+  }
+
+  return (
+    <div className="member-dashboard-page">
+      <section className="member-page-hero">
+        <div>
+          <span className="member-eyebrow">Membership Renewal</span>
+          <h1>Renew Membership</h1>
+          <p>
+            Select open coverage months, pay by card or ACH, and keep your membership
+            current without duplicate month payments.
+          </p>
+        </div>
+
+        <div className="member-hero-actions">
+          <button type="button" className="member-btn member-btn-light" onClick={load}>
+            <RefreshCcw size={16} />
+            Refresh
+          </button>
+          <button
+            type="button"
+            className="member-btn member-btn-primary"
+            onClick={() => window.location.assign("/dash/membership/my-payments/make-payment")}
+          >
+            <WalletCards size={16} />
+            Other Payments
+          </button>
+        </div>
+      </section>
 
       {error ? (
-        <div className="member-alert error">
+        <div className="member-alert member-alert-danger">
+          <AlertTriangle size={17} />
           {error}
         </div>
       ) : null}
 
-      {pageLoading ? (
-        <div className="member-card member-loading-card">
-          Loading renewal information...
+      {notice ? (
+        <div className="member-alert member-alert-success">
+          <CheckCircle2 size={17} />
+          {notice}
         </div>
       ) : null}
 
-      <div className="member-summary-grid">
+      <section className="member-summary-grid">
+        <div className="member-summary-card">
+          <span>Membership Start</span>
+          <strong>{formatDate(memberStartDate(profile))}</strong>
+          <small>Coverage starts from this date</small>
+        </div>
+
         <div className="member-summary-card">
           <span>Paid Months</span>
-          <h2>{paidCount}</h2>
-          <small>{fromYear} coverage</small>
+          <strong>{paidMonths}</strong>
+          <small>{selectedYear} coverage</small>
         </div>
 
         <div className="member-summary-card">
-          <span>Missing Months</span>
-          <h2>{unpaidCount}</h2>
-          <small>Unpaid coverage</small>
+          <span>Open Months</span>
+          <strong>{openMonths}</strong>
+          <small>{nextOpenMonth ? `Next due: ${nextOpenMonth.label}` : "No open months"}</small>
         </div>
 
         <div className="member-summary-card">
-          <span>Recommended Gap</span>
-          <h2>
-            {recommendedGap.start
-              ? `${monthObj(
-                  recommendedGap.start
-                ).short} - ${monthObj(
-                  recommendedGap.end
-                ).short}`
-              : "--"}
-          </h2>
-          <small>First unpaid range</small>
+          <span>Auto Renewal</span>
+          <strong>{subscriptionActive(subscription) ? "On" : "Off"}</strong>
+          <small>{clean(firstValue(subscription, ["plan_name", "status"], ""), "Manual renewal")}</small>
         </div>
+      </section>
 
-        <div className="member-summary-card featured">
-          <span>Total Due</span>
-          <h2>{money(calculatedAmount)}</h2>
-          <small>{monthsToPay} month coverage</small>
-        </div>
-      </div>
-
-      <div className="member-card">
-        <div className="member-card-header">
-          <div>
-            <h2>Renewal Options</h2>
-            <p>
-              Choose how you want to renew your membership.
-            </p>
-          </div>
-        </div>
-
-        <div className="renewal-mode-grid">
-          <button
-            type="button"
-            className={`renewal-option-card ${
-              renewalType === "recommended"
-                ? "active"
-                : ""
-            }`}
-            onClick={applyRecommendedGap}
-          >
-            <strong>Pay Missing Months</strong>
-            <span>Use the first unpaid coverage gap.</span>
-          </button>
-
-          <button
-            type="button"
-            className={`renewal-option-card ${
-              renewalType === "custom"
-                ? "active"
-                : ""
-            }`}
-            onClick={() =>
-              setRenewalType("custom")
-            }
-          >
-            <strong>Custom Coverage</strong>
-            <span>Pick From and To month/year.</span>
-          </button>
-
-          <button
-            type="button"
-            className={`renewal-option-card ${
-              renewalType === "full_year"
-                ? "active"
-                : ""
-            }`}
-            onClick={applyFullYear}
-          >
-            <strong>Full Year</strong>
-            <span>Cover January through December.</span>
-          </button>
-
-          <button
-            type="button"
-            className={`renewal-option-card ${
-              renewalType === "auto_renew"
-                ? "active"
-                : ""
-            }`}
-            onClick={() =>
-              setRenewalType("auto_renew")
-            }
-          >
-            <strong>Auto Renewal</strong>
-            <span>Start recurring Stripe billing.</span>
-          </button>
-        </div>
-      </div>
-
-      {renewalType !== "auto_renew" ? (
-        <div className="member-card">
-          <div className="member-card-header">
+      <div className="member-two-column">
+        <section className="member-panel">
+          <div className="member-panel-header">
             <div>
-              <h2>Coverage Date Builder</h2>
-              <p>
-                Select the exact coverage period using month and year.
-              </p>
+              <CalendarDays size={18} />
+              <h2>Coverage Months</h2>
             </div>
+            <span>{selectedYear}</span>
           </div>
 
-          <div className="renewal-date-builder">
-            <div className="renewal-date-card">
-              <label>From</label>
+          <div className="member-form-grid">
+            <label>
+              Year
+              <select value={selectedYear} onChange={(event) => setSelectedYear(Number(event.target.value))}>
+                {yearOptions.map((year) => (
+                  <option key={year} value={year}>
+                    {year}
+                  </option>
+                ))}
+              </select>
+            </label>
 
-              <div className="renewal-date-row">
-                <select
-                  value={fromMonth}
-                  onChange={(e) =>
-                    handleFromMonthChange(
-                      e.target.value
-                    )
-                  }
-                >
-                  {MONTHS.map((m) => (
-                    <option
-                      key={m.n}
-                      value={m.n}
-                    >
-                      {m.short}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={fromYear}
-                  onChange={(e) =>
-                    handleFromYearChange(
-                      e.target.value
-                    )
-                  }
-                >
-                  {yearOptions.map((year) => (
-                    <option
-                      key={year}
-                      value={year}
-                    >
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-
-            <div className="renewal-date-card">
-              <label>To</label>
-
-              <div className="renewal-date-row">
-                <select
-                  value={toMonth}
-                  onChange={(e) =>
-                    handleToMonthChange(
-                      e.target.value
-                    )
-                  }
-                >
-                  {MONTHS.map((m) => (
-                    <option
-                      key={m.n}
-                      value={m.n}
-                    >
-                      {m.short}
-                    </option>
-                  ))}
-                </select>
-
-                <select
-                  value={toYear}
-                  onChange={(e) =>
-                    handleToYearChange(
-                      e.target.value
-                    )
-                  }
-                >
-                  {yearOptions.map((year) => (
-                    <option
-                      key={year}
-                      value={year}
-                    >
-                      {year}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </div>
-          </div>
-        </div>
-      ) : null}
-
-      {renewalType === "auto_renew" ? (
-        <div className="member-card">
-          <div className="member-card-header">
-            <div>
-              <h2>Auto Renewal Subscription</h2>
-              <p>
-                Select a plan and enable automatic future renewal.
-              </p>
-            </div>
-          </div>
-
-          <div className="renewal-plan-grid">
-            {plans.map((plan) => (
-              <button
-                key={plan.id}
-                type="button"
-                className={`renewal-plan-card ${
-                  String(selected?.id) ===
-                  String(plan.id)
-                    ? "active"
-                    : ""
-                }`}
-                onClick={() =>
-                  setSelected(plan)
-                }
+            <label>
+              Renewal Plan
+              <select
+                value={selectedPlanId}
+                onChange={(event) => setSelectedPlanId(event.target.value)}
               >
-                <h3>{plan.label}</h3>
-                <div className="renewal-price">
-                  {money(plan.amount)}
-                </div>
-                <p>
-                  {plan.months} month
-                  {plan.months > 1 ? "s" : ""}
-                </p>
-              </button>
-            ))}
+                {activePlans.map((plan) => (
+                  <option key={planId(plan)} value={planId(plan)}>
+                    {planName(plan)} - {money(planAmount(plan))}
+                  </option>
+                ))}
+              </select>
+            </label>
+
+            <label>
+              Payment Method
+              <select
+                value={paymentMethod}
+                onChange={(event) => setPaymentMethod(event.target.value)}
+              >
+                <option value="card">Card</option>
+                <option value="ach">ACH</option>
+              </select>
+            </label>
           </div>
 
-          <div className="subscription-status-card">
+          <div className="member-month-grid">
+            {visibleMonths.map((month) => {
+              const selected = selectedMonthKeys.includes(month.key);
+              const className = [
+                "member-month-card",
+                `member-month-${month.status}`,
+                selected ? "member-month-selected" : "",
+              ]
+                .filter(Boolean)
+                .join(" ");
+
+              return (
+                <button
+                  key={month.key}
+                  type="button"
+                  className={className}
+                  disabled={!month.selectable}
+                  onClick={() => toggleMonth(month.key)}
+                >
+                  <strong>{month.short}</strong>
+                  <span>
+                    {selected
+                      ? "Selected"
+                      : month.status === "paid"
+                      ? "Paid"
+                      : month.status === "pending"
+                      ? "Pending"
+                      : "Open"}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+
+          {!visibleMonths.length ? (
+            <div className="member-empty-state">
+              This member did not have active coverage months in {selectedYear}.
+            </div>
+          ) : null}
+        </section>
+
+        <aside className="member-panel member-checkout-panel">
+          <div className="member-panel-header">
             <div>
-              <span>Current Plan</span>
+              <CreditCard size={18} />
+              <h2>Renewal Summary</h2>
+            </div>
+          </div>
+
+          <div className="member-summary-list">
+            <div>
+              <span>Member</span>
+              <strong>{memberName(profile)}</strong>
+            </div>
+            <div>
+              <span>Plan</span>
+              <strong>{planName(selectedPlan)}</strong>
+            </div>
+            <div>
+              <span>Selected Months</span>
+              <strong>{selectedMonthKeys.length}</strong>
+            </div>
+            <div>
+              <span>Coverage</span>
               <strong>
-                {subscription?.plan_name || "--"}
+                {selectedMonthKeys.length
+                  ? `${monthLabelFromKey(selectedMonthKeys[0])} - ${monthLabelFromKey(
+                      selectedMonthKeys[selectedMonthKeys.length - 1]
+                    )}`
+                  : "--"}
               </strong>
             </div>
-
             <div>
-              <span>Auto Renewal</span>
-              <strong>
-                {autoEnabled
-                  ? "Enabled"
-                  : "Disabled"}
-              </strong>
+              <span>Membership Amount</span>
+              <strong>{money(selectedBaseAmount)}</strong>
             </div>
-
             <div>
-              <span>Next Renewal</span>
-              <strong>
-                {formatDate(
-                  subscription?.next_renewal_date
-                )}
-              </strong>
+              <span>{paymentMethod === "ach" ? "ACH Fee" : "Card Fee"}</span>
+              <strong>{money(fee)}</strong>
+            </div>
+            <div className="member-summary-total">
+              <span>Total Today</span>
+              <strong>{money(totalAmount)}</strong>
             </div>
           </div>
 
           <button
             type="button"
-            className="member-primary-btn"
-            onClick={handleToggleAutoRenew}
-            disabled={
-              savingAutoRenew ||
-              !subscription
-            }
+            className="member-btn member-btn-primary member-btn-full"
+            disabled={actionLoading === "checkout" || selectedBaseAmount <= 0}
+            onClick={startRenewalCheckout}
           >
-            {savingAutoRenew
-              ? "Saving..."
-              : autoEnabled
-              ? "Disable Auto Renewal"
-              : "Enable Auto Renewal"}
+            {actionLoading === "checkout" ? (
+              <Loader2 size={16} className="member-spin" />
+            ) : (
+              <ShieldCheck size={16} />
+            )}
+            Continue To Checkout
           </button>
-        </div>
-      ) : null}
 
-      <div className="member-card renewal-summary-card">
-        <div className="member-card-header">
-          <div>
-            <h2>Payment Summary</h2>
-            <p>
-              Review the coverage and amount before continuing to Stripe.
-            </p>
-          </div>
-        </div>
-
-        <div className="renewal-summary-grid">
-          <div className="renewal-summary-item">
-            <span>Coverage Period</span>
-            <strong>{previewLabel}</strong>
-          </div>
-
-          <div className="renewal-summary-item">
-            <span>Months</span>
-            <strong>{monthsToPay}</strong>
-          </div>
-
-          <div className="renewal-summary-item">
-            <span>Monthly Rate</span>
-            <strong>{money(monthlyRate)}</strong>
-          </div>
-
-          <div className="renewal-summary-item total">
-            <span>Total Due</span>
-            <strong>{money(calculatedAmount)}</strong>
-          </div>
-        </div>
-
-        {previewMonths.length ? (
-          <div className="coverage-preview-grid">
-            {previewMonths.map((m) => (
-              <div
-                key={m.key}
-                className="coverage-preview-item"
-              >
-                <span>{m.short}</span>
-                <strong>{m.year}</strong>
-              </div>
-            ))}
-          </div>
-        ) : null}
-      </div>
-
-      <div className="member-card renewal-action-card">
-        <div>
-          <h2>
-            {renewalType === "auto_renew"
-              ? "Start Auto-Renew Membership?"
-              : "Ready to Renew?"}
-          </h2>
-          <p>
-            Secure online payment powered by Stripe.
+          <p className="member-muted">
+            Invoice and receipt emails are sent automatically after successful payment.
           </p>
+        </aside>
+      </div>
+
+      <section className="member-panel">
+        <div className="member-panel-header">
+          <div>
+            <Repeat size={18} />
+            <h2>Auto Renewal</h2>
+          </div>
+          <span>{subscriptionActive(subscription) ? "Active" : "Not Active"}</span>
         </div>
 
-        <button
-          type="button"
-          className="member-primary-btn member-primary-btn-lg"
-          onClick={handleCheckout}
-          disabled={
-            loading ||
-            calculatedAmount <= 0
-          }
-        >
-          {loading
-            ? "Redirecting..."
-            : renewalType === "auto_renew"
-            ? `Subscribe ${money(calculatedAmount)}`
-            : `Pay ${money(calculatedAmount)}`}
-        </button>
-      </div>
+        <div className="member-auto-renewal-row">
+          <div>
+            <strong>{subscriptionActive(subscription) ? "Auto renewal is enabled." : "Set up auto renewal."}</strong>
+            <p>
+              Auto renewal uses your selected membership plan and Stripe checkout. You can
+              change or cancel it any time from this page.
+            </p>
+          </div>
+
+          <div className="member-inline-actions">
+            <button
+              type="button"
+              className="member-btn member-btn-primary"
+              disabled={actionLoading === "subscription" || !selectedPlanId}
+              onClick={setupAutoRenewal}
+            >
+              {actionLoading === "subscription" ? (
+                <Loader2 size={16} className="member-spin" />
+              ) : (
+                <Repeat size={16} />
+              )}
+              {subscriptionActive(subscription) ? "Change Plan" : "Set Up Auto Renewal"}
+            </button>
+
+            {subscriptionActive(subscription) ? (
+              <button
+                type="button"
+                className="member-btn member-btn-light"
+                disabled={actionLoading === "cancel-subscription"}
+                onClick={cancelAutoRenewal}
+              >
+                {actionLoading === "cancel-subscription" ? (
+                  <Loader2 size={16} className="member-spin" />
+                ) : (
+                  <XCircle size={16} />
+                )}
+                Cancel Auto Renewal
+              </button>
+            ) : null}
+          </div>
+        </div>
+      </section>
     </div>
   );
 }

@@ -1,1426 +1,783 @@
-
-
-// // frontend/src/components/MembershipDashboard/pages/MyPayments.jsx
-
-// import React, { useEffect, useMemo, useState } from "react";
-// import { useNavigate, useParams } from "react-router-dom";
-
-// import api from "../../api";
-
-// import MemberPageHeader from "../components/MemberPageHeader";
-// import MembershipRenewal from "./MembershipRenewal";
-// import MyMembershipCoverage from "./MyMembershipCoverage";
-// import MyLedger from "./MyLedger";
-// import InvoicesReceipts from "./InvoicesReceipts";
-// import GivingStatements from "./GivingStatements";
-
-// import BillingTabs from "../components/BillingTabs";
-// import PaymentTypeSelector from "../components/PaymentTypeSelector";
-// import MembershipPaymentPanel from "../components/MembershipPaymentPanel";
-// import DonationPaymentPanel from "../components/DonationPaymentPanel";
-// import ProgramPaymentPanel from "../components/ProgramPaymentPanel";
-// import PaymentSummaryPanel from "../components/PaymentSummaryPanel";
-// import PaymentHistorySection from "../components/PaymentHistorySection";
-
-// import "../../../styles/payment.css";
-
-// const DONATION_CATEGORIES = [
-//   "plate_collection",
-//   "candle_sale",
-//   "general_donation",
-//   "tithe",
-//   "vows",
-//   "baptism",
-//   "wedding_engagement",
-//   "memorial_service",
-//   "pledge",
-//   "building_fund",
-//   "charity_fund",
-//   "auction",
-//   "other_fund",
-//   "sunday_cash_collection",
-// ];
-
-// function normalizePlanKey(value) {
-//   const v = String(value || "").toLowerCase();
-
-//   if (v === "monthly" || v === "1_month") return "1_month";
-//   if (v === "3_month") return "3_month";
-//   if (v === "6_month") return "6_month";
-//   if (v === "12_month") return "12_month";
-
-//   return "1_month";
-// }
-
-// function apiKeyFromPlanKey(value) {
-//   const v = normalizePlanKey(value);
-//   return v === "1_month" ? "monthly" : v;
-// }
-
-// function getPlanForOption(rows, selectedKey) {
-//   const apiKey = apiKeyFromPlanKey(selectedKey);
-
-//   return (
-//     rows.find((p) => String(p.billing_cycle || "").toLowerCase() === apiKey) ||
-//     rows.find((p) => String(p.plan_key || "").toLowerCase() === selectedKey) ||
-//     null
-//   );
-// }
-
-// function checkoutUrl(data) {
-//   return (
-//     data?.url ||
-//     data?.checkout_url ||
-//     data?.checkoutUrl ||
-//     data?.session_url ||
-//     data?.sessionUrl ||
-//     ""
-//   );
-// }
-
-// function money(value) {
-//   return `$${Number(value || 0).toLocaleString("en-US", {
-//     minimumFractionDigits: 2,
-//     maximumFractionDigits: 2,
-//   })}`;
-// }
-
-// export default function MyPayments() {
-//   const navigate = useNavigate();
-//   const { tab } = useParams();
-
-//   const [planRows, setPlanRows] = useState([]);
-//   const [programs, setPrograms] = useState([]);
-//   const [campaigns, setCampaigns] = useState([]);
-
-//   const [selectedType, setSelectedType] = useState("membership");
-//   const [selectedPlan, setSelectedPlan] = useState("1_month");
-
-//   const [selectedProgram, setSelectedProgram] = useState("");
-//   const [programQuantity, setProgramQuantity] = useState(1);
-
-//   const [donationAmount, setDonationAmount] = useState("");
-//   const [donationCategory, setDonationCategory] = useState("general_donation");
-//   const [recurringDonation, setRecurringDonation] = useState(false);
-//   const [recurringFrequency, setRecurringFrequency] = useState("monthly");
-
-//   const [selectedCampaign, setSelectedCampaign] = useState("");
-//   const [pledgedAmount, setPledgedAmount] = useState("");
-//   const [upfrontAmount, setUpfrontAmount] = useState("");
-
-//   const [autoRenew, setAutoRenew] = useState(false);
-
-//   const [busy, setBusy] = useState(false);
-//   const [message, setMessage] = useState("");
-//   const [error, setError] = useState("");
-
-//   const activeTab = String(tab || "make-payment").toLowerCase();
-
-//   const normalizedPlanRows = useMemo(
-//     () =>
-//       planRows.map((p) => {
-//         const planKey = normalizePlanKey(p.billing_cycle);
-
-//         return {
-//           ...p,
-//           plan_key: planKey,
-//           duration_months:
-//             Number(p.duration_months) ||
-//             (planKey === "3_month"
-//               ? 3
-//               : planKey === "6_month"
-//               ? 6
-//               : planKey === "12_month"
-//               ? 12
-//               : 1),
-//         };
-//       }),
-//     [planRows]
-//   );
-
-//   const selectedPlanRow = useMemo(
-//     () => getPlanForOption(normalizedPlanRows, selectedPlan),
-//     [normalizedPlanRows, selectedPlan]
-//   );
-
-//   const selectedProgramRow = useMemo(
-//     () => programs.find((p) => Number(p.id) === Number(selectedProgram)) || null,
-//     [programs, selectedProgram]
-//   );
-
-//   const selectedCampaignRow = useMemo(
-//     () => campaigns.find((c) => Number(c.id) === Number(selectedCampaign)) || null,
-//     [campaigns, selectedCampaign]
-//   );
-
-//   const membershipAmount = Number(
-//     selectedPlanRow.minimum_amount || selectedPlanRow.amount || 0
-//   );
-
-//   const programTotal = useMemo(() => {
-//     return (
-//       Number(selectedProgramRow?.price_per_person || 0) *
-//       Number(programQuantity || 1)
-//     );
-//   }, [selectedProgramRow, programQuantity]);
-
-//   const pledgeRemaining = Math.max(
-//     Number(pledgedAmount || 0) - Number(upfrontAmount || 0),
-//     0
-//   );
-
-//   const totalAmount = useMemo(() => {
-//     if (selectedType === "membership") return membershipAmount;
-//     if (selectedType === "donation") return Number(donationAmount || 0);
-//     if (selectedType === "school" || selectedType === "trip") return programTotal;
-//     if (selectedType === "pledge") return Number(upfrontAmount || 0);
-//     return 0;
-//   }, [
-//     selectedType,
-//     membershipAmount,
-//     donationAmount,
-//     programTotal,
-//     upfrontAmount,
-//   ]);
-
-//   useEffect(() => {
-//     loadPlans();
-//     loadCampaigns();
-//   }, []);
-
-//   useEffect(() => {
-//     if (selectedType === "school" || selectedType === "trip") {
-//       setSelectedProgram("");
-//       setProgramQuantity(1);
-//       loadPrograms(selectedType);
-//     }
-//   }, [selectedType]);
-
-//   async function loadPlans() {
-//     try {
-//       const res = await api.get("/dues/plans");
-//       setPlanRows(Array.isArray(res.data?.rows) ? res.data.rows : []);
-//     } catch (err) {
-//       console.error(err);
-//     }
-//   }
-
-//   async function loadCampaigns() {
-//     try {
-//       const res = await api.get("/finance/campaigns", {
-//         params: {
-//           status: "active",
-//           limit: 100,
-//         },
-//       });
-
-//       setCampaigns(Array.isArray(res.data?.rows) ? res.data.rows : []);
-//     } catch (err) {
-//       console.error(err);
-//       setCampaigns([]);
-//     }
-//   }
-
-//   async function loadPrograms(type = selectedType) {
-//     try {
-//       const endpoint =
-//         type === "school"
-//           ? "/news-events?category=kids&published=1&page=1&limit=100"
-//           : "/news-events?category=trip&published=1&page=1&limit=100";
-
-//       const res = await api.get(endpoint);
-//       setPrograms(Array.isArray(res.data?.rows) ? res.data.rows : []);
-//     } catch (err) {
-//       console.error(err);
-//       setPrograms([]);
-//     }
-//   }
-
-//   function validateCheckout() {
-//     if (selectedType === "membership" && !selectedPlanRow.id) {
-//       throw new Error("Membership plan is not configured.");
-//     }
-
-//     if (selectedType === "donation") {
-//       if (!DONATION_CATEGORIES.includes(donationCategory)) {
-//         throw new Error("Please select a valid donation category.");
-//       }
-
-//       if (Number(donationAmount || 0) <= 0) {
-//         throw new Error("Please enter a valid donation amount.");
-//       }
-//     }
-
-//     if (
-//       (selectedType === "school" || selectedType === "trip") &&
-//       !selectedProgramRow
-//     ) {
-//       throw new Error("Please select a program.");
-//     }
-
-//     if (
-//       (selectedType === "school" || selectedType === "trip") &&
-//       programTotal <= 0
-//     ) {
-//       throw new Error("Program price is not configured.");
-//     }
-
-//     if (selectedType === "pledge") {
-//       if (!selectedCampaignRow?.id) {
-//         throw new Error("Please select a campaign.");
-//       }
-
-//       if (Number(pledgedAmount || 0) <= 0) {
-//         throw new Error("Please enter a valid pledge amount.");
-//       }
-
-//       if (Number(upfrontAmount || 0) <= 0) {
-//         throw new Error("Please enter the amount you want to pay now.");
-//       }
-
-//       if (Number(upfrontAmount) > Number(pledgedAmount)) {
-//         throw new Error("Pay-now amount cannot exceed pledged amount.");
-//       }
-//     }
-//   }
-
-//   async function handleCheckout() {
-//     try {
-//       setBusy(true);
-//       setError("");
-//       setMessage("");
-
-//       validateCheckout();
-
-//       const successUrl = `${window.location.origin}/dash/membership/my-payments/history?status=success&session_id={CHECKOUT_SESSION_ID}`;
-//       const cancelUrl = `${window.location.origin}/dash/membership/my-payments/make-payment?status=cancel&type=${selectedType}`;
-
-//       let payload = {};
-
-//       if (selectedType === "membership") {
-//         payload = {
-//           type: "membership",
-//           payment_type: "membership",
-//           category: "membership",
-
-//           plan_id: selectedPlanRow.id,
-//           dues_plan_id: selectedPlanRow.id,
-//           plan_name: selectedPlanRow.plan_name,
-//           selected_option: apiKeyFromPlanKey(selectedPlan),
-
-//           amount: membershipAmount,
-//           total_amount: membershipAmount,
-
-//           duration_months: selectedPlanRow.duration_months,
-//           months_paid: selectedPlanRow.duration_months,
-//           interval_count: selectedPlanRow.duration_months,
-//           interval_unit: "month",
-
-//           auto_renew: autoRenew,
-//           auto_payment_enabled: autoRenew,
-//           recurring_frequency: "monthly",
-
-//           sub_category: selectedPlanRow.plan_name || "Membership Dues",
-
-//           success_url: successUrl,
-//           cancel_url: cancelUrl,
-//         };
-//       }
-
-//       if (selectedType === "donation") {
-//         payload = {
-//           type: "donation",
-//           payment_type: "donation",
-//           category: "donation",
-
-//           donation_category: donationCategory,
-//           sub_category: donationCategory,
-
-//           amount: Number(donationAmount),
-//           total_amount: Number(donationAmount),
-
-//           is_recurring: recurringDonation,
-//           recurring_frequency: recurringFrequency,
-
-//           success_url: successUrl,
-//           cancel_url: cancelUrl,
-//         };
-//       }
-
-//       if (selectedType === "school" || selectedType === "trip") {
-//         payload = {
-//           type: selectedType,
-//           payment_type: selectedType,
-//           category: selectedType,
-
-//           related_entity_id: selectedProgramRow.id,
-//           related_entity_type: "news_event",
-//           program_id: selectedProgramRow.id,
-//           news_event_id: selectedProgramRow.id,
-//           program_title: selectedProgramRow.title,
-//           program_name: selectedProgramRow.title,
-//           sub_category: selectedProgramRow.title,
-
-//           quantity: Number(programQuantity) || 1,
-//           amount: programTotal,
-//           total_amount: programTotal,
-
-//           success_url: successUrl,
-//           cancel_url: cancelUrl,
-//         };
-//       }
-
-//       if (selectedType === "pledge") {
-//         payload = {
-//           type: "pledge",
-//           payment_type: "pledge",
-//           category: "pledge",
-
-//           campaign_id: selectedCampaignRow.id,
-//           campaign_name: selectedCampaignRow.title,
-//           sub_category: selectedCampaignRow.title,
-
-//           pledge_type:
-//             Number(upfrontAmount) >= Number(pledgedAmount)
-//               ? "pay_now"
-//               : "partial_upfront",
-
-//           pledged_amount: Number(pledgedAmount),
-//           upfront_amount: Number(upfrontAmount),
-//           remaining_balance: pledgeRemaining,
-
-//           amount: Number(upfrontAmount),
-//           total_amount: Number(upfrontAmount),
-
-//           success_url: successUrl,
-//           cancel_url: cancelUrl,
-//         };
-//       }
-
-//       const { data } = await api.post("/checkout/create-session", payload);
-//       const url = checkoutUrl(data);
-
-//       if (!url) throw new Error("Stripe checkout URL missing.");
-
-//       window.location.assign(url);
-//     } catch (err) {
-//       setError(err?.response?.data?.error || err.message || "Checkout failed.");
-//       setBusy(false);
-//     }
-//   }
-
-//   function goTab(next) {
-//     navigate(`/dash/membership/my-payments/${next}`);
-//   }
-
-//   return (
-//     <div className="member-page">
-//       <MemberPageHeader
-//         title="My Payments"
-//         subtitle="Membership, donations, school, trip, pledge, invoices, receipts, coverage, and ledger."
-//       />
-
-//       {message ? (
-//         <div className="member-banner member-banner-success">{message}</div>
-//       ) : null}
-
-//       {error ? (
-//         <div className="member-banner member-banner-error">{error}</div>
-//       ) : null}
-
-//       <BillingTabs activeTab={activeTab} onChange={goTab} />
-
-//       {activeTab === "make-payment" ? (
-//         <section className="payx-shell">
-//           <div className="payx-layout">
-//             <div className="payx-panel">
-//               <div className="payx-section-head">
-//                 <div>
-//                   <h3 className="payx-section-title">Make Payment</h3>
-//                   <p className="payx-section-subtitle">
-//                     Pay membership dues, donate, register for school/trip, or pay a pledge.
-//                   </p>
-//                 </div>
-//               </div>
-
-//               <PaymentTypeSelector
-//                 selectedType={selectedType}
-//                 onChange={setSelectedType}
-//               />
-
-//               {selectedType === "membership" ? (
-//                 <>
-//                   <MembershipPaymentPanel
-//                     planRows={normalizedPlanRows}
-//                     selectedPlan={selectedPlan}
-//                     setSelectedPlan={setSelectedPlan}
-//                   />
-
-//                   <label className="payx-check-row">
-//                     <input
-//                       type="checkbox"
-//                       checked={autoRenew}
-//                       onChange={(e) => setAutoRenew(e.target.checked)}
-//                     />
-//                     <span>Enable recurring automatic membership payment</span>
-//                   </label>
-//                 </>
-//               ) : null}
-
-//               {selectedType === "donation" ? (
-//                 <>
-//                   <DonationPaymentPanel
-//                     donationCategory={donationCategory}
-//                     setDonationCategory={setDonationCategory}
-//                     donationAmount={donationAmount}
-//                     setDonationAmount={setDonationAmount}
-//                   />
-
-//                   <label className="payx-check-row">
-//                     <input
-//                       type="checkbox"
-//                       checked={recurringDonation}
-//                       onChange={(e) => setRecurringDonation(e.target.checked)}
-//                     />
-//                     <span>Make this a recurring donation</span>
-//                   </label>
-
-//                   {recurringDonation ? (
-//                     <div className="payx-field">
-//                       <label>Recurring Frequency</label>
-//                       <select
-//                         value={recurringFrequency}
-//                         onChange={(e) => setRecurringFrequency(e.target.value)}
-//                       >
-//                         <option value="weekly">Weekly</option>
-//                         <option value="monthly">Monthly</option>
-//                         <option value="quarterly">Quarterly</option>
-//                         <option value="annual">Annual</option>
-//                       </select>
-//                     </div>
-//                   ) : null}
-//                 </>
-//               ) : null}
-
-//               {selectedType === "school" || selectedType === "trip" ? (
-//                 <ProgramPaymentPanel
-//                   selectedType={selectedType}
-//                   programs={programs}
-//                   selectedProgram={selectedProgram}
-//                   setSelectedProgram={setSelectedProgram}
-//                   programQuantity={programQuantity}
-//                   setProgramQuantity={setProgramQuantity}
-//                 />
-//               ) : null}
-
-//               {selectedType === "pledge" ? (
-//                 <div className="payx-form-grid">
-//                   <div className="payx-field">
-//                     <label>Campaign</label>
-//                     <select
-//                       value={selectedCampaign}
-//                       onChange={(e) => setSelectedCampaign(e.target.value)}
-//                     >
-//                       <option value="">Select campaign</option>
-//                       {campaigns.map((c) => (
-//                         <option key={c.id} value={c.id}>
-//                           {c.title}
-//                         </option>
-//                       ))}
-//                     </select>
-//                   </div>
-
-//                   <div className="payx-field">
-//                     <label>Pledged Amount</label>
-//                     <input
-//                       type="number"
-//                       min="1"
-//                       step="0.01"
-//                       value={pledgedAmount}
-//                       onChange={(e) => setPledgedAmount(e.target.value)}
-//                     />
-//                   </div>
-
-//                   <div className="payx-field">
-//                     <label>Pay Now</label>
-//                     <input
-//                       type="number"
-//                       min="1"
-//                       step="0.01"
-//                       value={upfrontAmount}
-//                       onChange={(e) => setUpfrontAmount(e.target.value)}
-//                     />
-//                   </div>
-
-//                   <div className="payx-summary-box payx-summary-box-highlight">
-//                     <span className="payx-summary-label">Remaining Balance</span>
-//                     <strong>{money(pledgeRemaining)}</strong>
-//                   </div>
-//                 </div>
-//               ) : null}
-//             </div>
-
-//             <PaymentSummaryPanel
-//               selectedType={selectedType}
-//               selectedPlan={selectedPlanRow.plan_name}
-//               selectedProgram={selectedProgram}
-//               selectedProgramRow={selectedProgramRow}
-//               donationCategory={donationCategory}
-//               donationAmount={donationAmount}
-//               quantity={programQuantity}
-//               membershipAmount={membershipAmount}
-//               totalAmount={
-//                 selectedType === "school" || selectedType === "trip"
-//                   ? programTotal
-//                   : totalAmount
-//               }
-//               busy={busy}
-//               onCheckout={handleCheckout}
-//             />
-//           </div>
-//         </section>
-//       ) : null}
-
-//       {activeTab === "renewal" ? <MembershipRenewal /> : null}
-//       {activeTab === "coverage" ? <MyMembershipCoverage /> : null}
-//       {activeTab === "history" ? <PaymentHistorySection /> : null}
-//       {activeTab === "ledger" ? <MyLedger /> : null}
-//       {activeTab === "invoices" ? <InvoicesReceipts /> : null}
-//       {activeTab === "giving" ? <GivingStatements /> : null}
-//     </div>
-//   );
-// }
-
-
-// frontend/src/components/MembershipDashboard/pages/MyPayments.jsx
-
-import React, { useEffect, useMemo, useState } from "react";
-import { useNavigate, useParams } from "react-router-dom";
+// frontend/src/components/MembershipDashboard/pages/MyPayment.jsx
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Bus,
+  CreditCard,
+  Gift,
+  GraduationCap,
+  RefreshCcw,
+  ShieldCheck,
+} from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import api from "../../api";
+import "../../../styles/member-dashboard.css";
 
-import MemberPageHeader from "../components/MemberPageHeader";
-import MembershipRenewal from "./MembershipRenewal";
-import MyMembershipCoverage from "./MyMembershipCoverage";
-import MyLedger from "./MyLedger";
-import InvoicesReceipts from "./InvoicesReceipts";
-import GivingStatements from "./GivingStatements";
-
-import BillingTabs from "../components/BillingTabs";
-import PaymentTypeSelector from "../components/PaymentTypeSelector";
-import MembershipPaymentPanel from "../components/MembershipPaymentPanel";
-import DonationPaymentPanel from "../components/DonationPaymentPanel";
-import ProgramPaymentPanel from "../components/ProgramPaymentPanel";
-import PaymentSummaryPanel from "../components/PaymentSummaryPanel";
-import PaymentHistorySection from "../components/PaymentHistorySection";
-
-import "../../../styles/payment.css";
-
-const DONATION_CATEGORIES = [
-  "plate_collection",
-  "candle_sale",
-  "general_donation",
-  "tithe",
-  "vows",
-  "baptism",
-  "wedding_engagement",
-  "memorial_service",
-  "pledge",
-  "building_fund",
-  "charity_fund",
-  "auction",
-  "other_fund",
-  "sunday_cash_collection",
+const PAYMENT_TYPES = [
+  {
+    key: "membership",
+    label: "Membership",
+    sub: "Renew dues or enable auto-pay.",
+    icon: CreditCard,
+  },
+  {
+    key: "donation",
+    label: "Donation",
+    sub: "Give to church funds and categories.",
+    icon: Gift,
+  },
+  {
+    key: "school",
+    label: "School Program",
+    sub: "Pay school program registration.",
+    icon: GraduationCap,
+  },
+  {
+    key: "trip",
+    label: "Trip Program",
+    sub: "Pay trip program registration.",
+    icon: Bus,
+  },
 ];
 
-const MONTHS = [
-  { value: 1, short: "Jan", label: "January" },
-  { value: 2, short: "Feb", label: "February" },
-  { value: 3, short: "Mar", label: "March" },
-  { value: 4, short: "Apr", label: "April" },
-  { value: 5, short: "May", label: "May" },
-  { value: 6, short: "Jun", label: "June" },
-  { value: 7, short: "Jul", label: "July" },
-  { value: 8, short: "Aug", label: "August" },
-  { value: 9, short: "Sep", label: "September" },
-  { value: 10, short: "Oct", label: "October" },
-  { value: 11, short: "Nov", label: "November" },
-  { value: 12, short: "Dec", label: "December" },
+const FALLBACK_DONATION_CATEGORIES = [
+  { value: "plate_collection", label: "መባ — Plate Collection" },
+  { value: "candle_sale", label: "ሻማ — Candle Sale" },
+  { value: "general_donation", label: "ስጦታ — General Donation" },
+  { value: "tithe", label: "አስራት — Tithe" },
+  { value: "vows", label: "ስዕለት — Vows" },
+  { value: "baptism", label: "ክርስትና — Baptism" },
+  { value: "wedding_engagement", label: "ጋብቻ / ቀለበት — Wedding / Engagement" },
+  { value: "memorial_service", label: "ፍታት — Memorial Service" },
+  { value: "building_fund", label: "የቤተክርስቲያን ማሰሪያ — Building Fund" },
+  { value: "charity_fund", label: "በጎ አድራጎት — Charity Fund" },
+  { value: "auction", label: "ጨረታ — Auction" },
+  { value: "other_fund", label: "ሌላ — Other Fund" },
 ];
 
-function normalizePlanKey(value) {
-  const v = String(value || "").toLowerCase();
+const PLAN_ENDPOINTS = [
+  "/dues/plans?active=1",
+  "/dues/plans",
+  "/membership/plans?active=1",
+  "/membership/plans",
+  "/member/plans?active=1",
+  "/member/plans",
+];
 
-  if (v === "monthly" || v === "1_month") return "1_month";
-  if (v === "3_month") return "3_month";
-  if (v === "6_month") return "6_month";
-  if (v === "12_month") return "12_month";
+const DONATION_ENDPOINTS = [
+  "/donation/categories?active=1",
+  "/donation/categories",
+  "/donations/categories?active=1",
+  "/donations/categories",
+  "/finance/donation-categories?active=1",
+  "/finance/donation-categories",
+];
 
-  return "1_month";
-}
+const SCHOOL_ENDPOINTS = [
+  "/school/programs?status=active",
+  "/school/programs?active=1",
+  "/school/programs",
+  "/programs/school?status=active",
+  "/programs/school",
+];
 
-function apiKeyFromPlanKey(value) {
-  const v = normalizePlanKey(value);
-  return v === "1_month" ? "monthly" : v;
-}
+const TRIP_ENDPOINTS = [
+  "/trip/programs?status=active",
+  "/trip/programs?active=1",
+  "/trip/programs",
+  "/programs/trip?status=active",
+  "/programs/trip",
+];
 
-function getPlanForOption(rows, selectedKey) {
-  const apiKey = apiKeyFromPlanKey(selectedKey);
-
-  return (
-    rows.find((p) => String(p.billing_cycle || "").toLowerCase() === apiKey) ||
-    rows.find((p) => String(p.plan_key || "").toLowerCase() === selectedKey) ||
-    null
-  );
-}
-
-function checkoutUrl(data) {
-  return (
-    data?.url ||
-    data?.checkout_url ||
-    data?.checkoutUrl ||
-    data?.session_url ||
-    data?.sessionUrl ||
-    ""
-  );
-}
+const CHECKOUT_ENDPOINTS = [
+  "/checkout/member-payment",
+  "/membership/payments/checkout",
+  "/payments/member/checkout",
+  "/payments/checkout",
+  "/checkout/membership",
+];
 
 function money(value) {
-  return `$${Number(value || 0).toLocaleString("en-US", {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
-function getMonthLabel(month) {
-  return MONTHS.find((m) => Number(m.value) === Number(month))?.label || "--";
+function numberValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
 }
 
-function getShortMonth(month) {
-  return MONTHS.find((m) => Number(m.value) === Number(month))?.short || "--";
+function clean(value, fallback = "--") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
 }
 
-function buildCoverageLabel(year, startMonth, endMonth) {
-  if (!startMonth || !endMonth) return "--";
-
-  return `${getShortMonth(startMonth)} ${year} → ${getShortMonth(
-    endMonth
-  )} ${year}`;
-}
-
-function buildCoverageMonthsJson(year, startMonth, endMonth) {
-  const start = Number(startMonth);
-  const end = Number(endMonth);
-
-  if (!start || !end || end < start) return "[]";
-
-  const rows = [];
-
-  for (let month = start; month <= end; month += 1) {
-    rows.push({
-      year: Number(year),
-      month: getMonthLabel(month),
-      month_number: month,
-      label: `${getMonthLabel(month)} ${year}`,
-    });
+function firstValue(source, keys, fallback = "") {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && value !== "") return value;
   }
-
-  return JSON.stringify(rows);
+  return fallback;
 }
 
-function getFirstUnpaidGap(grid = []) {
-  let start = null;
-  let end = null;
+function parseJsonArray(value) {
+  if (Array.isArray(value)) return value;
+  if (typeof value !== "string") return [];
 
-  for (const row of grid) {
-    const month = Number(row.month_number || 0);
-    const paid =
-      row.paid === true ||
-      ["paid", "completed", "posted", "approved"].includes(
-        String(row.status || "").toLowerCase()
-      );
+  try {
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : [];
+  } catch {
+    return [];
+  }
+}
 
-    if (!paid && month >= 1 && month <= 12) {
-      if (!start) start = month;
-      end = month;
-    } else if (start) {
-      break;
+function collectArrays(payload, keys) {
+  const found = [];
+  const visited = new WeakSet();
+
+  function walk(node) {
+    if (!node || typeof node !== "object") return;
+    if (visited.has(node)) return;
+    visited.add(node);
+
+    if (Array.isArray(node)) {
+      found.push(node);
+      return;
+    }
+
+    for (const key of keys) {
+      if (Array.isArray(node[key])) found.push(node[key]);
+    }
+
+    for (const value of Object.values(node)) {
+      if (value && typeof value === "object") walk(value);
     }
   }
 
+  walk(payload);
+  return found;
+}
+
+function normalizeRows(payload, keys = []) {
+  if (Array.isArray(payload)) return payload;
+
+  const preferredKeys = [
+    ...keys,
+    "rows",
+    "items",
+    "results",
+    "data",
+    "plans",
+    "programs",
+    "categories",
+    "records",
+  ];
+
+  const arrays = collectArrays(payload, preferredKeys);
+  return arrays.find((items) => items.length > 0) || arrays[0] || [];
+}
+
+function normalizeIsActive(row) {
+  const raw = firstValue(row, ["is_active", "active", "enabled", "isEnabled", "status"], "active");
+  const value = String(raw).trim().toLowerCase();
+  return !["inactive", "disabled", "archived", "deleted", "false", "0", "closed", "cancelled"].includes(value);
+}
+
+function optionId(row) {
+  return String(firstValue(row, ["id", "_id", "uuid", "program_id", "plan_id", "category_id", "slug", "code"], ""));
+}
+
+function optionName(row) {
+  return clean(
+    firstValue(row, [
+      "name",
+      "title",
+      "label",
+      "program_name",
+      "program_title",
+      "plan_name",
+      "category_name",
+      "display_name",
+    ]),
+    "Untitled"
+  );
+}
+
+function rowAmount(row) {
+  return numberValue(
+    firstValue(row, [
+      "amount",
+      "price",
+      "fee",
+      "cost",
+      "price_per_person",
+      "registration_fee",
+      "monthly_amount",
+      "membership_amount",
+      "total_amount",
+      "default_amount",
+    ])
+  );
+}
+
+function schoolAmount(program, quantity) {
+  const tiers = parseJsonArray(firstValue(program, ["pricing_tiers", "pricing_tiers_json", "tiers"], []));
+  const normalizedQty = Math.max(1, Number(quantity || 1));
+
+  const exactTier = tiers.find((tier) => {
+    const tierQty = Number(firstValue(tier, ["student_count", "students", "quantity", "qty", "count"], 0));
+    return tierQty === normalizedQty;
+  });
+
+  if (exactTier) return numberValue(firstValue(exactTier, ["amount", "price", "total"], 0));
+  return rowAmount(program) * normalizedQty;
+}
+
+function normalizeCategory(row) {
+  const value = clean(firstValue(row, ["value", "key", "slug", "code", "id", "_id", "name"], ""), "other_fund");
   return {
-    start,
-    end,
+    value: String(value),
+    label: optionName(row),
   };
 }
 
-export default function MyPayments() {
+async function getFirstAvailable(endpoints, keys) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(endpoint, {
+        headers: { "Cache-Control": "no-cache", Pragma: "no-cache" },
+        params: { _ts: Date.now() },
+      });
+      const rows = normalizeRows(response.data, keys).filter(Boolean);
+      if (rows.length > 0) return rows;
+    } catch (error) {
+      lastError = error;
+      if (![401, 403, 404, 405].includes(error?.response?.status)) break;
+    }
+  }
+
+  if (lastError && ![404, 405].includes(lastError?.response?.status)) throw lastError;
+  return [];
+}
+
+async function postFirstAvailable(endpoints, payload) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.post(endpoint, payload);
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (![404, 405].includes(error?.response?.status)) break;
+    }
+  }
+
+  throw lastError || new Error("Checkout route is not available.");
+}
+
+function TypeButton({ option, active, onClick }) {
+  const Icon = option.icon;
+
+  return (
+    <button
+      type="button"
+      className={`member-card member-card-feature ${active ? "is-active" : ""}`}
+      onClick={onClick}
+      aria-pressed={active}
+    >
+      <div className="member-section-header">
+        <Icon size={20} />
+        <h3>{option.label}</h3>
+      </div>
+      <p className="member-muted">{option.sub}</p>
+    </button>
+  );
+}
+
+function SummaryRow({ label, value }) {
+  return (
+    <div className="member-detail-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
+
+export default function MyPayment() {
+  const location = useLocation();
   const navigate = useNavigate();
-  const { tab } = useParams();
 
-  const currentYear = new Date().getFullYear();
+  const requestedType = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const type = params.get("type") || params.get("category");
+    return PAYMENT_TYPES.some((item) => item.key === type) ? type : "membership";
+  }, [location.search]);
 
-  const [planRows, setPlanRows] = useState([]);
-  const [programs, setPrograms] = useState([]);
-  const [campaigns, setCampaigns] = useState([]);
+  const [form, setForm] = useState({
+    type: requestedType,
+    donation_category: "tithe",
+    amount: "",
+    school_program_id: "",
+    trip_program_id: "",
+    plan_id: "",
+    coverage_months: 1,
+    quantity: 1,
+    payment_method: "card",
+    auto_subscription: false,
+    notes: "",
+  });
 
-  const [selectedType, setSelectedType] = useState("membership");
-  const [selectedPlan, setSelectedPlan] = useState("1_month");
-
-  const [membershipMode, setMembershipMode] = useState("subscription");
-  const [coverageYear, setCoverageYear] = useState(currentYear);
-  const [coverageStartMonth, setCoverageStartMonth] = useState("");
-  const [coverageEndMonth, setCoverageEndMonth] = useState("");
-  const [coverageGrid, setCoverageGrid] = useState([]);
-
-  const [selectedProgram, setSelectedProgram] = useState("");
-  const [programQuantity, setProgramQuantity] = useState(1);
-
-  const [donationAmount, setDonationAmount] = useState("");
-  const [donationCategory, setDonationCategory] =
-    useState("general_donation");
-  const [recurringDonation, setRecurringDonation] = useState(false);
-  const [recurringFrequency, setRecurringFrequency] = useState("monthly");
-
-  const [selectedCampaign, setSelectedCampaign] = useState("");
-  const [pledgedAmount, setPledgedAmount] = useState("");
-  const [upfrontAmount, setUpfrontAmount] = useState("");
-
-  const [autoRenew, setAutoRenew] = useState(false);
-
-  const [busy, setBusy] = useState(false);
-  const [message, setMessage] = useState("");
-  const [error, setError] = useState("");
-
-  const activeTab = String(tab || "make-payment").toLowerCase();
-
-  const normalizedPlanRows = useMemo(
-    () =>
-      planRows.map((p) => {
-        const planKey = normalizePlanKey(p.billing_cycle || p.plan_key);
-
-        return {
-          ...p,
-          plan_key: planKey,
-          duration_months:
-            Number(p.duration_months) ||
-            (planKey === "3_month"
-              ? 3
-              : planKey === "6_month"
-              ? 6
-              : planKey === "12_month"
-              ? 12
-              : 1),
-        };
-      }),
-    [planRows]
-  );
-
-  const selectedPlanRow = useMemo(
-    () => getPlanForOption(normalizedPlanRows, selectedPlan),
-    [normalizedPlanRows, selectedPlan]
-  );
-const safePlanRow =
-  selectedPlanRow ||
-  normalizedPlanRows[0] ||
-  {
-    id: null,
-    plan_name: "Monthly Membership",
-    minimum_amount: 50,
-    amount: 50,
-    duration_months: 1,
-  };
-  const monthlyPlan = useMemo(
-    () =>
-      normalizedPlanRows.find((p) => Number(p.duration_months) === 1) ||
-      selectedPlanRow,
-    [normalizedPlanRows, selectedPlanRow]
-  );
-
-  const monthlyRate = Number(
-    monthlyPlan?.minimum_amount || monthlyPlan?.amount || 0
-  );
-
-  const customMonths = useMemo(() => {
-    const start = Number(coverageStartMonth || 0);
-    const end = Number(coverageEndMonth || 0);
-
-    if (!start || !end || end < start) return 0;
-
-    return end - start + 1;
-  }, [coverageStartMonth, coverageEndMonth]);
-
-  const customCoverageAmount = Number(
-    (monthlyRate * customMonths).toFixed(2)
-  );
-
-  const selectedProgramRow = useMemo(
-    () => programs.find((p) => Number(p.id) === Number(selectedProgram)) || null,
-    [programs, selectedProgram]
-  );
-
-  const selectedCampaignRow = useMemo(
-    () => campaigns.find((c) => Number(c.id) === Number(selectedCampaign)) || null,
-    [campaigns, selectedCampaign]
-  );
-
- const membershipAmount =
-  membershipMode === "custom"
-    ? customCoverageAmount
-    : Number(
-        safePlanRow.minimum_amount ||
-        safePlanRow.amount ||
-        0
-      );
-
-  const programTotal = useMemo(() => {
-    return (
-      Number(selectedProgramRow?.price_per_person || 0) *
-      Number(programQuantity || 1)
-    );
-  }, [selectedProgramRow, programQuantity]);
-
-  const pledgeRemaining = Math.max(
-    Number(pledgedAmount || 0) - Number(upfrontAmount || 0),
-    0
-  );
-
-  const totalAmount = useMemo(() => {
-    if (selectedType === "membership") return membershipAmount;
-    if (selectedType === "donation") return Number(donationAmount || 0);
-    if (selectedType === "school" || selectedType === "trip") return programTotal;
-    if (selectedType === "pledge") return Number(upfrontAmount || 0);
-    return 0;
-  }, [
-    selectedType,
-    membershipAmount,
-    donationAmount,
-    programTotal,
-    upfrontAmount,
-  ]);
-const subtotal = Number(totalAmount || 0);
-
-const processingFee =
-  subtotal > 0
-    ? Number((subtotal * 0.029 + 0.30).toFixed(2))
-    : 0;
-
-const grandTotal =
-  Number((subtotal + processingFee).toFixed(2));
-  const recommendedGap = useMemo(
-    () => getFirstUnpaidGap(coverageGrid),
-    [coverageGrid]
-  );
-
-  const coverageLabel = useMemo(
-    () =>
-      buildCoverageLabel(
-        coverageYear,
-        coverageStartMonth,
-        coverageEndMonth
-      ),
-    [coverageYear, coverageStartMonth, coverageEndMonth]
-  );
+  const [plans, setPlans] = useState([]);
+  const [donationCategories, setDonationCategories] = useState(FALLBACK_DONATION_CATEGORIES);
+  const [schoolPrograms, setSchoolPrograms] = useState([]);
+  const [tripPrograms, setTripPrograms] = useState([]);
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
 
   useEffect(() => {
-    loadPlans();
-    loadCampaigns();
+    setForm((current) => ({ ...current, type: requestedType }));
+  }, [requestedType]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+    setOk("");
+
+    try {
+      const [planResult, donationResult, schoolResult, tripResult] = await Promise.allSettled([
+        getFirstAvailable(PLAN_ENDPOINTS, ["plans"]),
+        getFirstAvailable(DONATION_ENDPOINTS, ["categories"]),
+        getFirstAvailable(SCHOOL_ENDPOINTS, ["programs", "schoolPrograms"]),
+        getFirstAvailable(TRIP_ENDPOINTS, ["programs", "tripPrograms"]),
+      ]);
+
+      if (planResult.status === "fulfilled") {
+        setPlans(planResult.value.filter(normalizeIsActive));
+      }
+
+      if (donationResult.status === "fulfilled" && donationResult.value.length > 0) {
+        setDonationCategories(donationResult.value.filter(normalizeIsActive).map(normalizeCategory));
+      } else {
+        setDonationCategories(FALLBACK_DONATION_CATEGORIES);
+      }
+
+      if (schoolResult.status === "fulfilled") {
+        setSchoolPrograms(schoolResult.value.filter(normalizeIsActive));
+      }
+
+      if (tripResult.status === "fulfilled") {
+        setTripPrograms(tripResult.value.filter(normalizeIsActive));
+      }
+
+      const failures = [planResult, schoolResult, tripResult]
+        .filter((result) => result.status === "rejected")
+        .map((result) => result.reason?.response?.data?.error || result.reason?.message)
+        .filter(Boolean);
+
+      if (failures.length > 0) setErr(failures[0]);
+    } catch (error) {
+      setErr(error?.response?.data?.error || error?.message || "Unable to load payment options.");
+    } finally {
+      setLoading(false);
+    }
   }, []);
 
   useEffect(() => {
-    loadCoverageGrid();
-  }, [coverageYear]);
+    load();
+  }, [load]);
 
-  useEffect(() => {
-    if (selectedType === "school" || selectedType === "trip") {
-      setSelectedProgram("");
-      setProgramQuantity(1);
-      loadPrograms(selectedType);
-    }
-  }, [selectedType]);
+  const selectedPlan = useMemo(
+    () => plans.find((row) => optionId(row) === String(form.plan_id)) || plans[0] || null,
+    [plans, form.plan_id]
+  );
 
-  async function loadPlans() {
-    try {
-      const res = await api.get("/dues/plans");
-      setPlanRows(Array.isArray(res.data?.rows) ? res.data.rows : []);
-    } catch (err) {
-      console.error(err);
+  const selectedSchool = useMemo(
+    () => schoolPrograms.find((row) => optionId(row) === String(form.school_program_id)) || null,
+    [schoolPrograms, form.school_program_id]
+  );
+
+  const selectedTrip = useMemo(
+    () => tripPrograms.find((row) => optionId(row) === String(form.trip_program_id)) || null,
+    [tripPrograms, form.trip_program_id]
+  );
+
+  const computedAmount = useMemo(() => {
+    if (form.type === "membership") {
+      const months = Math.max(1, Number(form.coverage_months || 1));
+      const base = rowAmount(selectedPlan);
+      return form.auto_subscription ? base : base * months;
     }
+
+    if (form.type === "school") {
+      if (!selectedSchool) return 0;
+      return schoolAmount(selectedSchool, form.quantity);
+    }
+
+    if (form.type === "trip") {
+      if (!selectedTrip) return 0;
+      return rowAmount(selectedTrip) * Math.max(1, Number(form.quantity || 1));
+    }
+
+    return numberValue(form.amount);
+  }, [form, selectedPlan, selectedSchool, selectedTrip]);
+
+  const selectedType = PAYMENT_TYPES.find((item) => item.key === form.type) || PAYMENT_TYPES[0];
+  const SelectedIcon = selectedType.icon;
+
+  function updateField(name, value) {
+    setForm((current) => ({ ...current, [name]: value }));
   }
 
-  async function loadCoverageGrid() {
-    try {
-      const res = await api.get(`/member/membership-grid/${coverageYear}`);
-      const grid = Array.isArray(res.data?.grid) ? res.data.grid : [];
-
-      setCoverageGrid(grid);
-
-      const gap = getFirstUnpaidGap(grid);
-
-      if (gap.start && gap.end) {
-        setCoverageStartMonth(gap.start);
-        setCoverageEndMonth(gap.end);
-      }
-    } catch (err) {
-      console.error("coverage grid failed:", err);
-      setCoverageGrid([]);
-    }
+  function chooseType(type) {
+    setErr("");
+    setOk("");
+    setForm((current) => ({
+      ...current,
+      type,
+      amount: "",
+      quantity: 1,
+      auto_subscription: type === "membership" ? current.auto_subscription : false,
+    }));
   }
 
-  async function loadCampaigns() {
+  function validate() {
+    if (form.type === "membership" && !selectedPlan) return "No active membership plans were returned from the backend.";
+    if (form.type === "school" && !selectedSchool) return "No active school programs were returned from the backend.";
+    if (form.type === "trip" && !selectedTrip) return "No active trip programs were returned from the backend.";
+    if (!computedAmount || computedAmount <= 0) return "Please enter or select a valid amount.";
+    return "";
+  }
+
+  async function submitCheckout(event) {
+    event.preventDefault();
+
+    const validationError = validate();
+    if (validationError) {
+      setErr(validationError);
+      return;
+    }
+
+    setSubmitting(true);
+    setErr("");
+    setOk("");
+
     try {
-      const res = await api.get("/finance/campaigns", {
-        params: {
-          status: "active",
-          limit: 100,
+      const type = form.type;
+      const selectedProgram = type === "school" ? selectedSchool : selectedTrip;
+      const selectedProgramName = selectedProgram ? optionName(selectedProgram) : "";
+
+      const payload = {
+        source: "member_dashboard",
+        created_from: "member_dashboard",
+        category: type,
+        payment_type: type,
+        type,
+        amount: computedAmount,
+        total_amount: computedAmount,
+        subtotal_amount: computedAmount,
+        payment_method: form.payment_method,
+        method: form.payment_method,
+        create_invoice: true,
+        send_invoice_email: true,
+        send_receipt_email: true,
+        return_url: `${window.location.origin}/dash/membership/invoices-receipts`,
+        cancel_url: window.location.href,
+        notes: form.notes || "",
+        donation_category: type === "donation" ? form.donation_category : "",
+        plan_id: type === "membership" ? optionId(selectedPlan) : null,
+        dues_plan_id: type === "membership" ? optionId(selectedPlan) : null,
+        plan_name: type === "membership" ? optionName(selectedPlan || {}) : "",
+        coverage_months: type === "membership" ? Number(form.coverage_months || 1) : null,
+        auto_subscription: type === "membership" ? Boolean(form.auto_subscription) : false,
+        subscription: type === "membership" ? Boolean(form.auto_subscription) : false,
+        school_program_id: type === "school" ? optionId(selectedSchool) : null,
+        trip_program_id: type === "trip" ? optionId(selectedTrip) : null,
+        program_id: ["school", "trip"].includes(type) ? optionId(selectedProgram) : null,
+        program_name: selectedProgramName,
+        program_title: selectedProgramName,
+        quantity: ["school", "trip"].includes(type) ? Number(form.quantity || 1) : 1,
+        number_of_students: type === "school" ? Number(form.quantity || 1) : null,
+        participants_count: type === "trip" ? Number(form.quantity || 1) : null,
+        metadata: {
+          source: "member_dashboard",
+          category: type,
+          payment_type: type,
+          donation_category: type === "donation" ? form.donation_category : "",
+          program_name: selectedProgramName,
+          auto_subscription: type === "membership" ? String(Boolean(form.auto_subscription)) : "false",
         },
-      });
+      };
 
-      setCampaigns(Array.isArray(res.data?.rows) ? res.data.rows : []);
-    } catch (err) {
-      console.error(err);
-      setCampaigns([]);
+      const response = await postFirstAvailable(CHECKOUT_ENDPOINTS, payload);
+      const checkoutUrl = firstValue(response, [
+        "url",
+        "checkout_url",
+        "payment_url",
+        "session_url",
+        "stripe_url",
+        "redirect_url",
+        "payment_link",
+        "payment_link_url",
+        "public_url",
+        "invoice_url",
+        "checkoutUrl",
+      ]);
+
+      if (checkoutUrl) {
+        window.location.assign(checkoutUrl);
+        return;
+      }
+
+      setOk("Payment request was created. Please check your email for the invoice and payment link.");
+    } catch (error) {
+      setErr(
+        error?.response?.data?.details ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Unable to start checkout."
+      );
+    } finally {
+      setSubmitting(false);
     }
-  }
-
-  async function loadPrograms(type = selectedType) {
-    try {
-      const endpoint =
-        type === "school"
-          ? "/news-events?category=kids&published=1&page=1&limit=100"
-          : "/news-events?category=trip&published=1&page=1&limit=100";
-
-      const res = await api.get(endpoint);
-      setPrograms(Array.isArray(res.data?.rows) ? res.data.rows : []);
-    } catch (err) {
-      console.error(err);
-      setPrograms([]);
-    }
-  }
-
-  function validateCheckout() {
-    if (selectedType === "membership") {
-     if (!safePlanRow.id) {
-        throw new Error("Membership plan is not configured.");
-      }
-
-      if (membershipMode === "custom") {
-        if (!coverageStartMonth || !coverageEndMonth) {
-          throw new Error("Please select coverage start and end month.");
-        }
-
-        if (Number(coverageEndMonth) < Number(coverageStartMonth)) {
-          throw new Error("Coverage end month cannot be before start month.");
-        }
-
-        if (customCoverageAmount <= 0) {
-          throw new Error("Custom coverage amount is invalid.");
-        }
-      }
-    }
-
-    if (selectedType === "donation") {
-      if (!DONATION_CATEGORIES.includes(donationCategory)) {
-        throw new Error("Please select a valid donation category.");
-      }
-
-      if (Number(donationAmount || 0) <= 0) {
-        throw new Error("Please enter a valid donation amount.");
-      }
-    }
-
-    if (
-      (selectedType === "school" || selectedType === "trip") &&
-      !selectedProgramRow
-    ) {
-      throw new Error("Please select a program.");
-    }
-
-    if (
-      (selectedType === "school" || selectedType === "trip") &&
-      programTotal <= 0
-    ) {
-      throw new Error("Program price is not configured.");
-    }
-
-    if (selectedType === "pledge") {
-      if (!selectedCampaignRow?.id) {
-        throw new Error("Please select a campaign.");
-      }
-
-      if (Number(pledgedAmount || 0) <= 0) {
-        throw new Error("Please enter a valid pledge amount.");
-      }
-
-      if (Number(upfrontAmount || 0) <= 0) {
-        throw new Error("Please enter the amount you want to pay now.");
-      }
-
-      if (Number(upfrontAmount) > Number(pledgedAmount)) {
-        throw new Error("Pay-now amount cannot exceed pledged amount.");
-      }
-    }
-  }
-
-  async function handleCheckout() {
-    try {
-      setBusy(true);
-      setError("");
-      setMessage("");
-
-      validateCheckout();
-
-      const successUrl = `${window.location.origin}/dash/membership/my-payments/history?status=success&session_id={CHECKOUT_SESSION_ID}`;
-      const cancelUrl = `${window.location.origin}/dash/membership/my-payments/make-payment?status=cancel&type=${selectedType}`;
-
-      let payload = {};
-
-      if (selectedType === "membership") {
-        const isCustom = membershipMode === "custom";
-        const monthsPaid = isCustom
-  ? customMonths
-  : Number(safePlanRow.duration_months || 1);
-       const amountToPay = isCustom
-  ? customCoverageAmount
-  : Number(
-      safePlanRow.minimum_amount ||
-      safePlanRow.amount ||
-      0
-    );
-        payload = {
-          type: "membership",
-          payment_type: "membership",
-          category: "membership",
-
-          membership_mode: membershipMode,
-          renewal_type: isCustom ? "custom_missing_months" : "subscription_plan",
-
-          plan_id: safePlanRow.id,
-dues_plan_id: safePlanRow.id,
-plan_name: safePlanRow.plan_name,
-          selected_option: apiKeyFromPlanKey(selectedPlan),
-
-          amount: amountToPay,
-          total_amount: amountToPay,
-
-          coverage_year: coverageYear,
-          coverage_start_month: isCustom ? coverageStartMonth : "",
-          coverage_end_month: isCustom ? coverageEndMonth : "",
-          coverage_label: isCustom ? coverageLabel : "",
-          coverage_months_json: isCustom
-            ? buildCoverageMonthsJson(
-                coverageYear,
-                coverageStartMonth,
-                coverageEndMonth
-              )
-            : "",
-
-          duration_months: monthsPaid,
-          months_paid: monthsPaid,
-          interval_count: Number(safePlanRow.duration_months || 1),
-          interval_unit: "month",
-
-          auto_renew: autoRenew,
-          auto_payment_enabled: autoRenew,
-          is_recurring: autoRenew,
-          subscription_enabled: autoRenew,
-          recurring_frequency: "monthly",
-
-          sub_category: isCustom
-            ? `Custom Coverage: ${coverageLabel}`
-            : safePlanRow.plan_name || "Membership Dues",
-
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        };
-      }
-
-      if (selectedType === "donation") {
-        payload = {
-          type: "donation",
-          payment_type: "donation",
-          category: "donation",
-
-          donation_category: donationCategory,
-          sub_category: donationCategory,
-
-          amount: Number(donationAmount),
-          total_amount: Number(donationAmount),
-
-          is_recurring: recurringDonation,
-          recurring_frequency: recurringFrequency,
-
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        };
-      }
-
-      if (selectedType === "school" || selectedType === "trip") {
-        payload = {
-          type: selectedType,
-          payment_type: selectedType,
-          category: selectedType,
-
-          related_entity_id: selectedProgramRow.id,
-          related_entity_type: "news_event",
-          program_id: selectedProgramRow.id,
-          news_event_id: selectedProgramRow.id,
-          program_title: selectedProgramRow.title,
-          program_name: selectedProgramRow.title,
-          sub_category: selectedProgramRow.title,
-
-          quantity: Number(programQuantity) || 1,
-          amount: programTotal,
-          total_amount: programTotal,
-
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        };
-      }
-
-      if (selectedType === "pledge") {
-        payload = {
-          type: "pledge",
-          payment_type: "pledge",
-          category: "pledge",
-
-          campaign_id: selectedCampaignRow.id,
-          campaign_name: selectedCampaignRow.title,
-          sub_category: selectedCampaignRow.title,
-
-          pledge_type:
-            Number(upfrontAmount) >= Number(pledgedAmount)
-              ? "pay_now"
-              : "partial_upfront",
-
-          pledged_amount: Number(pledgedAmount),
-          upfront_amount: Number(upfrontAmount),
-          remaining_balance: pledgeRemaining,
-
-          amount: Number(upfrontAmount),
-          total_amount: Number(upfrontAmount),
-
-          success_url: successUrl,
-          cancel_url: cancelUrl,
-        };
-      }
-
-      const { data } = await api.post("/checkout/create-session", payload);
-      const url = checkoutUrl(data);
-
-      if (!url) throw new Error("Stripe checkout URL missing.");
-
-      window.location.assign(url);
-    } catch (err) {
-      setError(err?.response?.data?.error || err.message || "Checkout failed.");
-      setBusy(false);
-    }
-  }
-
-  function goTab(next) {
-    navigate(`/dash/membership/my-payments/${next}`);
   }
 
   return (
-    <div className="member-page">
-      <MemberPageHeader
-        title="My Payments"
-        subtitle="Membership, donations, school, trip, pledge, invoices, receipts, coverage, and ledger."
-      />
+    <div className="membership-dashboard-page member-page-stack">
+      <section className="member-page-hero">
+        <div>
+          <span className="member-eyebrow">Member Self Checkout</span>
+          <h1>Make a Payment</h1>
+          <p className="member-page-subtitle">
+            Pay membership dues, donations, school programs, and trip programs with secure card or ACH checkout.
+          </p>
+        </div>
 
-      {message ? (
-        <div className="member-banner member-banner-success">{message}</div>
+        <div className="member-page-actions">
+          <button type="button" className="member-btn member-btn-light" onClick={load} disabled={loading}>
+            <RefreshCcw size={16} className={loading ? "member-spin" : ""} />
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            className="member-btn member-btn-light"
+            onClick={() => navigate("/dash/membership/invoices-receipts")}
+          >
+            <ShieldCheck size={16} />
+            Invoices
+          </button>
+        </div>
+      </section>
+
+      {err ? (
+        <div className="member-alert member-alert-danger">
+          <AlertTriangle size={17} />
+          {err}
+        </div>
       ) : null}
 
-      {error ? (
-        <div className="member-banner member-banner-error">{error}</div>
+      {ok ? (
+        <div className="member-alert member-alert-success">
+          <ShieldCheck size={17} />
+          {ok}
+        </div>
       ) : null}
 
-      <BillingTabs activeTab={activeTab} onChange={goTab} />
+      <section className="member-dashboard-grid">
+        {PAYMENT_TYPES.map((option) => (
+          <TypeButton
+            key={option.key}
+            option={option}
+            active={form.type === option.key}
+            onClick={() => chooseType(option.key)}
+          />
+        ))}
+      </section>
 
-      {activeTab === "make-payment" ? (
-        <section className="payx-shell">
-          <div className="payx-layout">
-            <div className="payx-panel">
-              <div className="payx-section-head">
-                <div>
-                  <h3 className="payx-section-title">Make Payment</h3>
-                  <p className="payx-section-subtitle">
-                    Pay membership dues, cover missing months, donate, register
-                    for school/trip, or pay a pledge.
-                  </p>
-                </div>
-              </div>
+      <form className="member-dashboard-grid" onSubmit={submitCheckout}>
+        <section className="member-card member-card-feature">
+          <div className="member-section-header">
+            <SelectedIcon size={21} />
+            <h2>{selectedType.label} Details</h2>
+          </div>
 
-              <PaymentTypeSelector
-                selectedType={selectedType}
-                onChange={setSelectedType}
-              />
+          {form.type === "donation" ? (
+            <div className="member-filter-grid">
+              <label>
+                Donation Category
+                <select
+                  value={form.donation_category}
+                  onChange={(event) => updateField("donation_category", event.target.value)}
+                >
+                  {donationCategories.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
 
-              {selectedType === "membership" ? (
-                <>
-                  <MembershipPaymentPanel
-                    planRows={normalizedPlanRows}
-                    selectedPlan={selectedPlan}
-                    setSelectedPlan={setSelectedPlan}
-                    membershipMode={membershipMode}
-                    setMembershipMode={setMembershipMode}
-                    coverageYear={coverageYear}
-                    setCoverageYear={setCoverageYear}
-                    coverageStartMonth={coverageStartMonth}
-                    setCoverageStartMonth={setCoverageStartMonth}
-                    coverageEndMonth={coverageEndMonth}
-                    setCoverageEndMonth={setCoverageEndMonth}
-                    customMonthlyRate={monthlyRate}
-                    recommendedStartMonth={recommendedGap.start}
-                    recommendedEndMonth={recommendedGap.end}
-                  />
-
-                  <label className="payx-check-row">
-                    <input
-                      type="checkbox"
-                      checked={autoRenew}
-                      onChange={(e) => setAutoRenew(e.target.checked)}
-                    />
-                    <span>Enable recurring automatic membership payment</span>
-                  </label>
-                </>
-              ) : null}
-
-              {selectedType === "donation" ? (
-                <>
-                  <DonationPaymentPanel
-                    donationCategory={donationCategory}
-                    setDonationCategory={setDonationCategory}
-                    donationAmount={donationAmount}
-                    setDonationAmount={setDonationAmount}
-                  />
-
-                  <label className="payx-check-row">
-                    <input
-                      type="checkbox"
-                      checked={recurringDonation}
-                      onChange={(e) => setRecurringDonation(e.target.checked)}
-                    />
-                    <span>Make this a recurring donation</span>
-                  </label>
-
-                  {recurringDonation ? (
-                    <div className="payx-field">
-                      <label>Recurring Frequency</label>
-                      <select
-                        value={recurringFrequency}
-                        onChange={(e) => setRecurringFrequency(e.target.value)}
-                      >
-                        <option value="weekly">Weekly</option>
-                        <option value="monthly">Monthly</option>
-                        <option value="quarterly">Quarterly</option>
-                        <option value="annual">Annual</option>
-                      </select>
-                    </div>
-                  ) : null}
-                </>
-              ) : null}
-
-              {selectedType === "school" || selectedType === "trip" ? (
-                <ProgramPaymentPanel
-                  selectedType={selectedType}
-                  programs={programs}
-                  selectedProgram={selectedProgram}
-                  setSelectedProgram={setSelectedProgram}
-                  programQuantity={programQuantity}
-                  setProgramQuantity={setProgramQuantity}
+              <label>
+                Amount
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) => updateField("amount", event.target.value)}
+                  placeholder="100.00"
                 />
-              ) : null}
-
-              {selectedType === "pledge" ? (
-                <div className="payx-form-grid">
-                  <div className="payx-field">
-                    <label>Campaign</label>
-                    <select
-                      value={selectedCampaign}
-                      onChange={(e) => setSelectedCampaign(e.target.value)}
-                    >
-                      <option value="">Select campaign</option>
-                      {campaigns.map((c) => (
-                        <option key={c.id} value={c.id}>
-                          {c.title}
-                        </option>
-                      ))}
-                    </select>
-                  </div>
-
-                  <div className="payx-field">
-                    <label>Pledged Amount</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="0.01"
-                      value={pledgedAmount}
-                      onChange={(e) => setPledgedAmount(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="payx-field">
-                    <label>Pay Now</label>
-                    <input
-                      type="number"
-                      min="1"
-                      step="0.01"
-                      value={upfrontAmount}
-                      onChange={(e) => setUpfrontAmount(e.target.value)}
-                    />
-                  </div>
-
-                  <div className="payx-summary-box payx-summary-box-highlight">
-                    <span className="payx-summary-label">
-                      Remaining Balance
-                    </span>
-                    <strong>{money(pledgeRemaining)}</strong>
-                  </div>
-                </div>
-              ) : null}
+              </label>
             </div>
+          ) : null}
 
-            <PaymentSummaryPanel
-              selectedType={selectedType}
-              selectedPlan={safePlanRow.plan_name}
-              membershipMode={membershipMode}
-              coverageLabel={coverageLabel}
-              coverageYear={coverageYear}
-              coverageStartMonth={coverageStartMonth}
-              coverageEndMonth={coverageEndMonth}
-            monthsPaid={
-  membershipMode === "custom"
-    ? customMonths
-    : Number(safePlanRow.duration_months || 1)
-}
-              selectedProgram={selectedProgram}
-              selectedProgramRow={selectedProgramRow}
-              donationCategory={donationCategory}
-              donationAmount={donationAmount}
-              quantity={programQuantity}
-              membershipAmount={membershipAmount}
-              totalAmount={
-                selectedType === "school" || selectedType === "trip"
-                  ? programTotal
-                  : totalAmount
-              }
-              processingFee={processingFee}
-grandTotal={grandTotal}
-              busy={busy}
-              onCheckout={handleCheckout}
-            />
+          {form.type === "school" ? (
+            <div className="member-filter-grid">
+              <label>
+                School Program
+                <select
+                  value={form.school_program_id}
+                  onChange={(event) => updateField("school_program_id", event.target.value)}
+                >
+                  <option value="">Select school program</option>
+                  {schoolPrograms.map((program) => (
+                    <option key={optionId(program)} value={optionId(program)}>
+                      {optionName(program)} - {money(rowAmount(program))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Number of Students
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(event) => updateField("quantity", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "trip" ? (
+            <div className="member-filter-grid">
+              <label>
+                Trip Program
+                <select
+                  value={form.trip_program_id}
+                  onChange={(event) => updateField("trip_program_id", event.target.value)}
+                >
+                  <option value="">Select trip program</option>
+                  {tripPrograms.map((program) => (
+                    <option key={optionId(program)} value={optionId(program)}>
+                      {optionName(program)} - {money(rowAmount(program))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Participants
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(event) => updateField("quantity", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "membership" ? (
+            <div className="member-filter-grid">
+              <label>
+                Membership Plan
+                <select value={form.plan_id} onChange={(event) => updateField("plan_id", event.target.value)}>
+                  {plans.length === 0 ? <option value="">No active plans found</option> : null}
+                  {plans.map((plan) => (
+                    <option key={optionId(plan)} value={optionId(plan)}>
+                      {optionName(plan)} - {money(rowAmount(plan))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Coverage Months
+                <select
+                  value={form.coverage_months}
+                  onChange={(event) => updateField("coverage_months", event.target.value)}
+                  disabled={form.auto_subscription}
+                >
+                  {[1, 3, 6, 12].map((month) => (
+                    <option key={month} value={month}>
+                      {month} Month{month > 1 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Auto Subscription
+                <select
+                  value={form.auto_subscription ? "yes" : "no"}
+                  onChange={(event) => updateField("auto_subscription", event.target.value === "yes")}
+                >
+                  <option value="no">One-time renewal</option>
+                  <option value="yes">Auto subscription</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          <div className="member-filter-grid">
+            <label>
+              Checkout Method
+              <select value={form.payment_method} onChange={(event) => updateField("payment_method", event.target.value)}>
+                <option value="card">Card - Stripe</option>
+                <option value="ach">ACH / Bank</option>
+              </select>
+            </label>
+
+            <label>
+              Notes
+              <input value={form.notes} onChange={(event) => updateField("notes", event.target.value)} placeholder="Optional note" />
+            </label>
           </div>
         </section>
-      ) : null}
 
-      {activeTab === "renewal" ? <MembershipRenewal /> : null}
-      {activeTab === "coverage" ? <MyMembershipCoverage /> : null}
-      {activeTab === "history" ? <PaymentHistorySection /> : null}
-      {activeTab === "ledger" ? <MyLedger /> : null}
-      {activeTab === "invoices" ? <InvoicesReceipts /> : null}
-      {activeTab === "giving" ? <GivingStatements /> : null}
+        <aside className="member-card">
+          <div className="member-section-header">
+            <CreditCard size={20} />
+            <h2>Checkout Summary</h2>
+          </div>
+
+          <div className="member-detail-grid">
+            <SummaryRow label="Payment Type" value={selectedType.label} />
+            <SummaryRow label="Method" value={form.payment_method === "ach" ? "ACH" : "Card"} />
+            <SummaryRow label="Invoice Email" value="Will be sent" />
+            <SummaryRow label="Receipt Email" value="After payment" />
+            <SummaryRow label={form.auto_subscription ? "Subscription Amount" : "Total Due"} value={money(computedAmount)} />
+          </div>
+
+          <button type="submit" className="member-btn member-btn-primary member-full-width" disabled={submitting || loading}>
+            {submitting ? <RefreshCcw size={16} className="member-spin" /> : <CreditCard size={16} />}
+            Continue to Secure Checkout
+          </button>
+        </aside>
+      </form>
     </div>
   );
 }

@@ -3,583 +3,530 @@
 
 const pool = require("../../../db");
 
-/* =========================================================
-   HELPERS
-========================================================= */
+const PLEDGES_TABLE = "tbl_finance_pledges";
+const CAMPAIGNS_TABLE = "tbl_finance_campaigns";
+const PAYMENTS_TABLE = "tbl_finance_payments";
+
+const tableCache = new Map();
+const columnCache = new Map();
+
+function clean(value, max = 255) {
+  return String(value ?? "").trim().slice(0, max);
+}
 
 function money(value) {
   const n = Number(value || 0);
-  return Number.isFinite(n)
-    ? Number(n.toFixed(2))
-    : 0;
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
 }
 
 function pct(value, total) {
   const v = Number(value || 0);
   const t = Number(total || 0);
-
-  if (!t) return 0;
-
-  return Number(
-    ((v / t) * 100).toFixed(2)
-  );
+  if (!t || t <= 0) return 0;
+  return Number(((v / t) * 100).toFixed(2));
 }
 
-function safeNumber(value) {
-  return Number(value || 0);
+function toInt(value, fallback = 1) {
+  const n = Number(value);
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
 }
 
-/* =========================================================
-   EXECUTIVE KPI DASHBOARD
-========================================================= */
+function sqlDate(value) {
+  const s = clean(value, 20);
+  return /^\d{4}-\d{2}-\d{2}$/.test(s) ? s : null;
+}
 
-async function getExecutiveKpis() {
-  const [[summary]] = await pool.query(`
-    SELECT
-      COUNT(*) AS total_pledges,
+async function tableExists(conn, tableName) {
+  if (tableCache.has(tableName)) return tableCache.get(tableName);
 
-      COALESCE(SUM(pledged_amount),0) AS pledged_amount,
+  const [rows] = await conn.query("SHOW TABLES LIKE ?", [tableName]);
+  const exists = rows.length > 0;
 
-      COALESCE(SUM(paid_amount),0) AS paid_amount,
+  tableCache.set(tableName, exists);
+  return exists;
+}
 
-      COALESCE(SUM(remaining_balance),0) AS receivable_amount,
+async function getColumns(conn, tableName) {
+  if (columnCache.has(tableName)) return columnCache.get(tableName);
 
-      SUM(
-        CASE
-          WHEN status='paid'
-          THEN 1
-          ELSE 0
-        END
-      ) AS paid_pledges,
+  const exists = await tableExists(conn, tableName);
+  if (!exists) {
+    const empty = new Set();
+    columnCache.set(tableName, empty);
+    return empty;
+  }
 
-      SUM(
-        CASE
-          WHEN status='partial'
-          THEN 1
-          ELSE 0
-        END
-      ) AS partial_pledges,
+  const [rows] = await conn.query(`SHOW COLUMNS FROM \`${tableName}\``);
+  const cols = new Set(rows.map((row) => row.Field));
 
-      SUM(
-        CASE
-          WHEN status='receivable'
-          THEN 1
-          ELSE 0
-        END
-      ) AS receivable_pledges,
+  columnCache.set(tableName, cols);
+  return cols;
+}
 
-      SUM(
-        CASE
-          WHEN status='written_off'
-          THEN 1
-          ELSE 0
-        END
-      ) AS writeoff_pledges
+function firstColumn(cols, alias, names, fallback = "NULL") {
+  for (const name of names) {
+    if (cols.has(name)) return `${alias}.\`${name}\``;
+  }
+  return fallback;
+}
 
-    FROM tbl_finance_pledges
-  `);
+function buildFilters(cols, filters = {}, alias = "p") {
+  const where = [];
+  const params = [];
 
-  const pledged =
-    money(summary.pledged_amount);
+  if (filters.campaign_id && cols.has("campaign_id")) {
+    where.push(`${alias}.campaign_id = ?`);
+    params.push(filters.campaign_id);
+  }
 
-  const paid =
-    money(summary.paid_amount);
+  if (filters.member_id && cols.has("member_id")) {
+    where.push(`${alias}.member_id = ?`);
+    params.push(filters.member_id);
+  }
 
-  const receivable =
-    money(summary.receivable_amount);
+  if (filters.status && cols.has("status")) {
+    where.push(`LOWER(${alias}.status) = ?`);
+    params.push(clean(filters.status, 40).toLowerCase());
+  }
+
+  const from = sqlDate(filters.date_from || filters.from);
+  const to = sqlDate(filters.date_to || filters.to);
+  const dateCol = cols.has("created_at")
+    ? "created_at"
+    : cols.has("pledge_date")
+    ? "pledge_date"
+    : cols.has("due_date")
+    ? "due_date"
+    : null;
+
+  if (from && dateCol) {
+    where.push(`DATE(${alias}.\`${dateCol}\`) >= DATE(?)`);
+    params.push(from);
+  }
+
+  if (to && dateCol) {
+    where.push(`DATE(${alias}.\`${dateCol}\`) <= DATE(?)`);
+    params.push(to);
+  }
 
   return {
-    total_pledges:
-      safeNumber(summary.total_pledges),
-
-    pledged_amount:
-      pledged,
-
-    paid_amount:
-      paid,
-
-    receivable_amount:
-      receivable,
-
-    collection_rate:
-      pct(
-        paid,
-        pledged
-      ),
-
-    receivable_rate:
-      pct(
-        receivable,
-        pledged
-      ),
-
-    paid_pledges:
-      safeNumber(summary.paid_pledges),
-
-    partial_pledges:
-      safeNumber(summary.partial_pledges),
-
-    receivable_pledges:
-      safeNumber(summary.receivable_pledges),
-
-    writeoff_pledges:
-      safeNumber(summary.writeoff_pledges),
+    whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params,
   };
 }
 
-/* =========================================================
-   COLLECTION KPI
-========================================================= */
-
-async function getCollectionKpis() {
-
-  const [[row]] =
-    await pool.query(`
-      SELECT
-
-        COALESCE(
-          SUM(pledged_amount),
-          0
-        ) pledged,
-
-        COALESCE(
-          SUM(paid_amount),
-          0
-        ) paid,
-
-        COALESCE(
-          SUM(remaining_balance),
-          0
-        ) receivable
-
-      FROM tbl_finance_pledges
-    `);
-
-  const pledged =
-    money(row.pledged);
-
-  const paid =
-    money(row.paid);
-
-  const receivable =
-    money(row.receivable);
-
-  return {
-    pledged,
-    paid,
-    receivable,
-
-    collection_rate:
-      pct(
-        paid,
-        pledged
-      ),
-
-    receivable_rate:
-      pct(
-        receivable,
-        pledged
-      ),
-  };
-}
-
-/* =========================================================
-   CAMPAIGN KPI
-========================================================= */
-
-async function getCampaignKpis() {
-
-  const [rows] =
-    await pool.query(`
-      SELECT
-
-        campaign_id,
-
-        campaign_name,
-
-        COUNT(*) total_pledges,
-
-        SUM(pledged_amount)
-          pledged_amount,
-
-        SUM(paid_amount)
-          paid_amount,
-
-        SUM(remaining_balance)
-          receivable_amount
-
-      FROM tbl_finance_pledges
-
-      GROUP BY
-        campaign_id,
-        campaign_name
-
-      ORDER BY
-        pledged_amount DESC
-    `);
-
-  return rows.map(
-    (row) => {
-
-      const pledged =
-        money(
-          row.pledged_amount
-        );
-
-      const paid =
-        money(
-          row.paid_amount
-        );
-
-      return {
-
-        campaign_id:
-          row.campaign_id,
-
-        campaign_name:
-          row.campaign_name,
-
-        total_pledges:
-          safeNumber(
-            row.total_pledges
-          ),
-
-        pledged_amount:
-          pledged,
-
-        paid_amount:
-          paid,
-
-        receivable_amount:
-          money(
-            row.receivable_amount
-          ),
-
-        collection_rate:
-          pct(
-            paid,
-            pledged
-          ),
-      };
-    }
-  );
-}
-
-/* =========================================================
-   AGING KPI
-========================================================= */
-
-async function getAgingKpis() {
-
-  const [[row]] =
-    await pool.query(`
-      SELECT
-
-        SUM(
-          CASE
-            WHEN due_date < CURDATE()
-            THEN 1
-            ELSE 0
-          END
-        ) overdue_count,
-
-        SUM(
-          CASE
-            WHEN due_date < CURDATE()
-            THEN remaining_balance
-            ELSE 0
-          END
-        ) overdue_amount
-
-      FROM tbl_finance_pledges
-
-      WHERE status IN (
-        'receivable',
-        'partial',
-        'invoiced'
-      )
-    `);
-
-  return {
-    overdue_count:
-      safeNumber(
-        row.overdue_count
-      ),
-
-    overdue_amount:
-      money(
-        row.overdue_amount
-      ),
-  };
-}
-
-/* =========================================================
-   WRITE OFF KPI
-========================================================= */
-
-async function getWriteoffKpis() {
-
-  const [[row]] =
-    await pool.query(`
-      SELECT
-
-        COUNT(*) total_writeoffs,
-
-        COALESCE(
-          SUM(pledged_amount),
-          0
-        ) writeoff_amount
-
-      FROM tbl_finance_pledges
-
-      WHERE status='written_off'
-    `);
-
-  return {
-    total_writeoffs:
-      safeNumber(
-        row.total_writeoffs
-      ),
-
-    writeoff_amount:
-      money(
-        row.writeoff_amount
-      ),
-  };
-}
-
-/* =========================================================
-   REMINDER KPI
-========================================================= */
-
-async function getReminderKpis() {
+async function getPledgeKpis(filters = {}) {
+  const conn = await pool.getConnection();
 
   try {
+    if (!(await tableExists(conn, PLEDGES_TABLE))) {
+      return {
+        ok: true,
+        kpis: emptyKpis(),
+      };
+    }
 
-    const [[row]] =
-      await pool.query(`
-        SELECT
+    const cols = await getColumns(conn, PLEDGES_TABLE);
 
-          COUNT(*) total,
+    const pledgedExpr = firstColumn(cols, "p", [
+      "pledged_amount",
+      "amount",
+      "total_amount",
+    ], "0");
 
-          SUM(
-            CASE
-              WHEN status='sent'
-              THEN 1
-              ELSE 0
-            END
-          ) sent,
+    const paidExpr = firstColumn(cols, "p", [
+      "paid_amount",
+      "amount_paid",
+      "collected_amount",
+    ], "0");
 
-          SUM(
-            CASE
-              WHEN status='failed'
-              THEN 1
-              ELSE 0
-            END
-          ) failed
+    const balanceExpr = firstColumn(cols, "p", [
+      "remaining_balance",
+      "balance_due",
+      "outstanding_amount",
+    ], `GREATEST(COALESCE(${pledgedExpr}, 0) - COALESCE(${paidExpr}, 0), 0)`);
 
-        FROM tbl_finance_pledge_reminders
-      `);
+    const dueExpr = firstColumn(cols, "p", [
+      "due_date",
+      "next_due_at",
+      "pledge_due_date",
+      "scheduled_date",
+    ]);
+
+    const statusExpr = firstColumn(cols, "p", ["status"], "'receivable'");
+
+    const filtersSql = buildFilters(cols, filters);
+    const activeStatusCondition = cols.has("status")
+      ? "LOWER(COALESCE(p.status, 'receivable')) <> 'cancelled'"
+      : "1 = 1";
+
+    const [[row]] = await conn.query(
+      `
+      SELECT
+        COUNT(*) AS total_pledges,
+
+        COUNT(
+          CASE
+            WHEN LOWER(${statusExpr}) IN ('receivable', 'partial', 'invoiced', 'open', 'pending')
+            THEN 1
+            ELSE NULL
+          END
+        ) AS open_pledges,
+
+        COUNT(
+          CASE
+            WHEN LOWER(${statusExpr}) = 'overdue'
+              OR (${dueExpr} IS NOT NULL AND DATE(${dueExpr}) < CURDATE() AND COALESCE(${balanceExpr}, 0) > 0)
+            THEN 1
+            ELSE NULL
+          END
+        ) AS overdue_pledges,
+
+        COUNT(
+          CASE
+            WHEN LOWER(${statusExpr}) IN ('paid', 'completed', 'fulfilled')
+            THEN 1
+            ELSE NULL
+          END
+        ) AS paid_pledges,
+
+        COUNT(
+          CASE
+            WHEN LOWER(${statusExpr}) IN ('cancelled', 'canceled')
+            THEN 1
+            ELSE NULL
+          END
+        ) AS cancelled_pledges,
+
+        COALESCE(SUM(CASE WHEN ${activeStatusCondition} THEN COALESCE(${pledgedExpr}, 0) ELSE 0 END), 0)
+          AS pledged_amount,
+
+        COALESCE(SUM(CASE WHEN ${activeStatusCondition} THEN COALESCE(${paidExpr}, 0) ELSE 0 END), 0)
+          AS paid_amount,
+
+        COALESCE(SUM(CASE WHEN ${activeStatusCondition} THEN COALESCE(${balanceExpr}, 0) ELSE 0 END), 0)
+          AS outstanding_amount,
+
+        COALESCE(AVG(CASE WHEN ${activeStatusCondition} THEN COALESCE(${pledgedExpr}, 0) ELSE NULL END), 0)
+          AS average_pledge_amount
+
+      FROM ${PLEDGES_TABLE} p
+
+      ${filtersSql.whereSql}
+      `,
+      filtersSql.params
+    );
+
+    const kpis = formatKpis(row);
 
     return {
-      total:
-        safeNumber(
-          row.total
-        ),
-
-      sent:
-        safeNumber(
-          row.sent
-        ),
-
-      failed:
-        safeNumber(
-          row.failed
-        ),
+      ok: true,
+      kpis,
     };
-
-  } catch {
-
-    return {
-      total: 0,
-      sent: 0,
-      failed: 0,
-    };
+  } finally {
+    conn.release();
   }
 }
 
-/* =========================================================
-   DONOR CONVERSION KPI
-========================================================= */
-
-async function getDonorConversionKpis() {
-
-  const [[row]] =
-    await pool.query(`
-      SELECT
-
-        COUNT(*) total_pledges,
-
-        SUM(
-          CASE
-            WHEN paid_amount > 0
-            THEN 1
-            ELSE 0
-          END
-        ) converted
-
-      FROM tbl_finance_pledges
-    `);
+function formatKpis(row = {}) {
+  const pledged = money(row.pledged_amount);
+  const paid = money(row.paid_amount);
+  const outstanding = money(row.outstanding_amount);
+  const total = Number(row.total_pledges || 0);
 
   return {
-    total_pledges:
-      safeNumber(
-        row.total_pledges
-      ),
+    total_pledges: total,
+    open_pledges: Number(row.open_pledges || 0),
+    overdue_pledges: Number(row.overdue_pledges || 0),
+    paid_pledges: Number(row.paid_pledges || 0),
+    cancelled_pledges: Number(row.cancelled_pledges || 0),
 
-    converted:
-      safeNumber(
-        row.converted
-      ),
+    pledged_amount: pledged,
+    paid_amount: paid,
+    outstanding_amount: outstanding,
+    average_pledge_amount: money(row.average_pledge_amount),
 
-    conversion_rate:
-      pct(
-        row.converted,
-        row.total_pledges
-      ),
+    collection_rate_percent: pct(paid, pledged),
+    outstanding_rate_percent: pct(outstanding, pledged),
+    paid_pledge_rate_percent: pct(row.paid_pledges, total),
+    overdue_pledge_rate_percent: pct(row.overdue_pledges, total),
   };
 }
 
-/* =========================================================
-   FORECAST KPI
-========================================================= */
-
-async function getForecastKpis() {
-
-  const [[row]] =
-    await pool.query(`
-      SELECT
-
-        COALESCE(
-          SUM(
-            remaining_balance
-          ),
-          0
-        ) future_receivable
-
-      FROM tbl_finance_pledges
-
-      WHERE status IN (
-        'receivable',
-        'partial',
-        'invoiced'
-      )
-    `);
-
+function emptyKpis() {
   return {
-    projected_collection:
-      money(
-        row.future_receivable
-      ),
+    total_pledges: 0,
+    open_pledges: 0,
+    overdue_pledges: 0,
+    paid_pledges: 0,
+    cancelled_pledges: 0,
+    pledged_amount: 0,
+    paid_amount: 0,
+    outstanding_amount: 0,
+    average_pledge_amount: 0,
+    collection_rate_percent: 0,
+    outstanding_rate_percent: 0,
+    paid_pledge_rate_percent: 0,
+    overdue_pledge_rate_percent: 0,
   };
 }
 
-/* =========================================================
-   MONTHLY TREND
-========================================================= */
+async function getCampaignPledgeKpis(filters = {}) {
+  const conn = await pool.getConnection();
 
-async function getMonthlyTrend() {
+  try {
+    if (!(await tableExists(conn, PLEDGES_TABLE))) {
+      return {
+        ok: true,
+        rows: [],
+        pagination: {
+          page: 1,
+          limit: 25,
+          total: 0,
+          pages: 1,
+        },
+      };
+    }
 
-  const [rows] =
-    await pool.query(`
+    const pledgeCols = await getColumns(conn, PLEDGES_TABLE);
+    const hasCampaigns = await tableExists(conn, CAMPAIGNS_TABLE);
+    const campaignCols = hasCampaigns
+      ? await getColumns(conn, CAMPAIGNS_TABLE)
+      : new Set();
+
+    const pledgedExpr = firstColumn(pledgeCols, "p", [
+      "pledged_amount",
+      "amount",
+      "total_amount",
+    ], "0");
+
+    const paidExpr = firstColumn(pledgeCols, "p", [
+      "paid_amount",
+      "amount_paid",
+      "collected_amount",
+    ], "0");
+
+    const balanceExpr = firstColumn(pledgeCols, "p", [
+      "remaining_balance",
+      "balance_due",
+      "outstanding_amount",
+    ], `GREATEST(COALESCE(${pledgedExpr}, 0) - COALESCE(${paidExpr}, 0), 0)`);
+
+    const campaignNameExpr =
+      hasCampaigns && campaignCols.has("campaign_name")
+        ? "c.campaign_name"
+        : hasCampaigns && campaignCols.has("title")
+        ? "c.title"
+        : hasCampaigns && campaignCols.has("name")
+        ? "c.name"
+        : "CONCAT('Campaign #', p.campaign_id)";
+
+    const join =
+      hasCampaigns && pledgeCols.has("campaign_id")
+        ? "LEFT JOIN tbl_finance_campaigns c ON c.id = p.campaign_id"
+        : "";
+
+    const groupExpr = pledgeCols.has("campaign_id") ? "p.campaign_id" : "NULL";
+    const page = toInt(filters.page, 1);
+    const limit = Math.min(100, toInt(filters.limit || filters.pageSize, 25));
+    const offset = (page - 1) * limit;
+
+    const where = [];
+    const params = [];
+
+    if (filters.search && hasCampaigns) {
+      const q = `%${clean(filters.search, 100)}%`;
+      const parts = [];
+
+      for (const col of ["campaign_name", "title", "name", "campaign_code", "code"]) {
+        if (campaignCols.has(col)) {
+          parts.push(`c.\`${col}\` LIKE ?`);
+          params.push(q);
+        }
+      }
+
+      if (parts.length) where.push(`(${parts.join(" OR ")})`);
+    }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const [[countRow]] = await conn.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM (
+        SELECT ${groupExpr} AS campaign_id
+        FROM ${PLEDGES_TABLE} p
+        ${join}
+        ${whereSql}
+        GROUP BY ${groupExpr}
+      ) x
+      `,
+      params
+    );
+
+    const [rowsRaw] = await conn.query(
+      `
       SELECT
+        ${groupExpr} AS campaign_id,
+        ${campaignNameExpr} AS campaign_name,
+        COUNT(*) AS pledge_count,
+        COALESCE(SUM(${pledgedExpr}), 0) AS pledged_amount,
+        COALESCE(SUM(${paidExpr}), 0) AS paid_amount,
+        COALESCE(SUM(${balanceExpr}), 0) AS outstanding_amount
 
-        DATE_FORMAT(
-          created_at,
-          '%Y-%m'
-        ) month,
+      FROM ${PLEDGES_TABLE} p
 
-        COUNT(*) pledges,
+      ${join}
 
-        SUM(
-          pledged_amount
-        ) pledged,
+      ${whereSql}
 
-        SUM(
-          paid_amount
-        ) paid
+      GROUP BY ${groupExpr}
 
-      FROM tbl_finance_pledges
+      ORDER BY pledged_amount DESC, campaign_name ASC
 
-      GROUP BY
-        DATE_FORMAT(
-          created_at,
-          '%Y-%m'
-        )
+      LIMIT ?
+      OFFSET ?
+      `,
+      [...params, limit, offset]
+    );
 
-      ORDER BY
-        month DESC
+    const rows = rowsRaw.map((row) => {
+      const pledged = money(row.pledged_amount);
+      const paid = money(row.paid_amount);
+      const outstanding = money(row.outstanding_amount);
 
-      LIMIT 12
-    `);
+      return {
+        campaign_id: row.campaign_id,
+        campaign_name: row.campaign_name || "Unassigned Campaign",
+        pledge_count: Number(row.pledge_count || 0),
+        pledged_amount: pledged,
+        paid_amount: paid,
+        outstanding_amount: outstanding,
+        collection_rate_percent: pct(paid, pledged),
+        outstanding_rate_percent: pct(outstanding, pledged),
+      };
+    });
 
-  return rows;
+    const total = Number(countRow.total || 0);
+
+    return {
+      ok: true,
+      rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.max(1, Math.ceil(total / limit)),
+      },
+    };
+  } finally {
+    conn.release();
+  }
 }
 
-/* =========================================================
-   COMPLETE KPI DASHBOARD
-========================================================= */
+async function getMemberPledgeKpis(filters = {}) {
+  const conn = await pool.getConnection();
 
-async function getPledgeDashboardKpis() {
+  try {
+    if (!(await tableExists(conn, PLEDGES_TABLE))) {
+      return {
+        ok: true,
+        rows: [],
+      };
+    }
 
-  const [
-    executive,
-    collection,
-    campaigns,
-    aging,
-    writeoff,
-    reminders,
-    conversion,
-    forecast,
-    monthlyTrend,
-  ] = await Promise.all([
-    getExecutiveKpis(),
-    getCollectionKpis(),
-    getCampaignKpis(),
-    getAgingKpis(),
-    getWriteoffKpis(),
-    getReminderKpis(),
-    getDonorConversionKpis(),
-    getForecastKpis(),
-    getMonthlyTrend(),
+    const pledgeCols = await getColumns(conn, PLEDGES_TABLE);
+    const hasMembers = await tableExists(conn, "tbl_members");
+    const memberCols = hasMembers ? await getColumns(conn, "tbl_members") : new Set();
+
+    const pledgedExpr = firstColumn(pledgeCols, "p", [
+      "pledged_amount",
+      "amount",
+      "total_amount",
+    ], "0");
+
+    const paidExpr = firstColumn(pledgeCols, "p", [
+      "paid_amount",
+      "amount_paid",
+      "collected_amount",
+    ], "0");
+
+    const balanceExpr = firstColumn(pledgeCols, "p", [
+      "remaining_balance",
+      "balance_due",
+      "outstanding_amount",
+    ], `GREATEST(COALESCE(${pledgedExpr}, 0) - COALESCE(${paidExpr}, 0), 0)`);
+
+    const memberJoin =
+      hasMembers && pledgeCols.has("member_id")
+        ? "LEFT JOIN tbl_members m ON m.id = p.member_id"
+        : "";
+
+    const memberNameExpr =
+      hasMembers && memberCols.has("full_name")
+        ? "m.full_name"
+        : "CONCAT('Member #', p.member_id)";
+
+    const limit = Math.min(100, toInt(filters.limit, 25));
+
+    const [rowsRaw] = await conn.query(
+      `
+      SELECT
+        ${firstColumn(pledgeCols, "p", ["member_id"], "NULL")} AS member_id,
+        ${memberNameExpr} AS full_name,
+        COUNT(*) AS pledge_count,
+        COALESCE(SUM(${pledgedExpr}), 0) AS pledged_amount,
+        COALESCE(SUM(${paidExpr}), 0) AS paid_amount,
+        COALESCE(SUM(${balanceExpr}), 0) AS outstanding_amount
+
+      FROM ${PLEDGES_TABLE} p
+
+      ${memberJoin}
+
+      GROUP BY member_id
+
+      ORDER BY outstanding_amount DESC, pledged_amount DESC
+
+      LIMIT ?
+      `,
+      [limit]
+    );
+
+    return {
+      ok: true,
+      rows: rowsRaw.map((row) => ({
+        member_id: row.member_id,
+        full_name: row.full_name || "Unassigned Member",
+        pledge_count: Number(row.pledge_count || 0),
+        pledged_amount: money(row.pledged_amount),
+        paid_amount: money(row.paid_amount),
+        outstanding_amount: money(row.outstanding_amount),
+        collection_rate_percent: pct(row.paid_amount, row.pledged_amount),
+      })),
+    };
+  } finally {
+    conn.release();
+  }
+}
+
+async function getPledgeDashboardKpis(filters = {}) {
+  const [summary, campaigns, members] = await Promise.all([
+    getPledgeKpis(filters),
+    getCampaignPledgeKpis({ ...filters, page: 1, limit: 10 }),
+    getMemberPledgeKpis({ ...filters, limit: 10 }),
   ]);
 
   return {
-    executive,
-    collection,
-    campaigns,
-    aging,
-    writeoff,
-    reminders,
-    conversion,
-    forecast,
-    monthlyTrend,
+    ok: true,
+    kpis: summary.kpis,
+    top_campaigns: campaigns.rows,
+    top_members: members.rows,
   };
 }
 
-/* =========================================================
-   EXPORTS
-========================================================= */
-
 module.exports = {
-  getExecutiveKpis,
-  getCollectionKpis,
-  getCampaignKpis,
-  getAgingKpis,
-  getWriteoffKpis,
-  getReminderKpis,
-  getDonorConversionKpis,
-  getForecastKpis,
-  getMonthlyTrend,
+  getPledgeKpis,
   getPledgeDashboardKpis,
+  getCampaignPledgeKpis,
+  getMemberPledgeKpis,
 };

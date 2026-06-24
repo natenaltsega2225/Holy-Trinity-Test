@@ -1,234 +1,110 @@
-
-// // src/components/MembershipDashoard/MemberLayout.jsx
-
-// import React from "react";
-
-// import DashboardLayout from "../Shared/DashboardLayout";
-
-// import "../../styles/member-dashboard.css";
-
-// export default function MemberLayout() {
-//   const nav = [
-   
-//     {
-//       to: "/dash/membership/my-payments/make-payment",
-//       fullPath: "/dash/membership/my-payments",
-//       label: "My Payments",
-//       icon: "💳",
-//     },
-
-//     {
-//       to: "/dash/membership/giving-statements",
-//       fullPath: "/dash/membership/giving-statements",
-//       label: "Giving Statements",
-//       icon: "📄",
-//     },
-
-//     {
-//       to: "/dash/membership/family",
-//       fullPath: "/dash/membership/family",
-//       label: "Family / Dependents",
-//       icon: "👨‍👩‍👧",
-//     },
-
-//     {
-//       to: "/dash/membership/documents",
-//       fullPath: "/dash/membership/documents",
-//       label: "Documents",
-//       icon: "🗂️",
-//     },
-
-//     {
-//       to: "/dash/membership/myrequests",
-//       fullPath: "/dash/membership/myrequests",
-//       label: "My Requests",
-//       icon: "📝",
-//     },
-
-//     {
-//       to: "/dash/membership/my-profile",
-//       fullPath: "/dash/membership/my-profile",
-//       label: "My Profile",
-//       icon: "👤",
-//     },
-//   ];
-
-//   return (
-//     <DashboardLayout
-//       variant="member"
-//       appName="Holy Trinity EOTC"
-//       roleTitle="Member"
-//       nav={nav}
-//     />
-//   );
-// }
-
-// src/components/MembershipDashboard/MemberLayout.jsx
+// frontend/src/components/MembershipDashboard/MemberLayout.jsx
 
 import React from "react";
+import {
+  BookOpen,
+  ClipboardList,
+  CreditCard,
+  FileText,
+  FolderOpen,
+  HeartHandshake,
+  Home,
+  ReceiptText,
+  RefreshCcw,
+  ShieldCheck,
+  UserRound,
+  Users,
+} from "lucide-react";
 
-import DashboardLayout
-  from "../Shared/DashboardLayout";
-
+import DashboardLayout from "../Shared/DashboardLayout";
 import "../../styles/member-dashboard.css";
 
+function navIcon(Icon) {
+  return <Icon size={18} strokeWidth={2.1} aria-hidden="true" />;
+}
+
 export default function MemberLayout() {
-
   const nav = [
-
-    /* =========================================
-       OVERVIEW
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/overview",
-
-      fullPath:
-        "/dash/membership/overview",
-
-      label:
-        "Overview",
-
-      icon:
-        "🏠",
+      to: "/dash/membership/overview",
+      fullPath: "/dash/membership/overview",
+      label: "Overview",
+      icon: navIcon(Home),
     },
-
-    /* =========================================
-       PAYMENTS
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/my-payments/make-payment",
-
-      fullPath:
-        "/dash/membership/my-payments",
-
-      label:
-        "My Payments",
-
-      icon:
-        "💳",
+      to: "/dash/membership/my-payments/make-payment",
+      fullPath: "/dash/membership/my-payments",
+      label: "My Payments",
+      icon: navIcon(CreditCard),
     },
-
-    /* =========================================
-       MEMBERSHIP COVERAGE
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/membership-coverage",
-
-      fullPath:
-        "/dash/membership/membership-coverage",
-
-      label:
-        "Membership Coverage",
-
-      icon:
-        "🛡️",
+      to: "/dash/membership/donations",
+      fullPath: "/dash/membership/donations",
+      label: "Donations",
+      icon: navIcon(HeartHandshake),
     },
-
-    /* =========================================
-       GIVING STATEMENTS
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/giving-statements",
-
-      fullPath:
-        "/dash/membership/giving-statements",
-
-      label:
-        "Giving Statements",
-
-      icon:
-        "📄",
+      to: "/dash/membership/membership-coverage",
+      fullPath: "/dash/membership/membership-coverage",
+      label: "Membership Coverage",
+      icon: navIcon(ShieldCheck),
     },
-
-    /* =========================================
-       FAMILY
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/family",
-
-      fullPath:
-        "/dash/membership/family",
-
-      label:
-        "Family / Dependents",
-
-      icon:
-        "👨‍👩‍👧",
+      to: "/dash/membership/membership-renewal",
+      fullPath: "/dash/membership/membership-renewal",
+      label: "Renewal / Auto Pay",
+      icon: navIcon(RefreshCcw),
     },
-
-    /* =========================================
-       DOCUMENTS
-    ========================================= */
-
+    // {
+    //   to: "/dash/membership/my-ledger",
+    //   fullPath: "/dash/membership/my-ledger",
+    //   label: "My Ledger",
+    //   icon: navIcon(BookOpen),
+    // },
     {
-      to:
-        "/dash/membership/documents",
-
-      fullPath:
-        "/dash/membership/documents",
-
-      label:
-        "Documents",
-
-      icon:
-        "🗂️",
+      to: "/dash/membership/invoices-receipts",
+      fullPath: "/dash/membership/invoices-receipts",
+      label: "Invoices & Receipts",
+      icon: navIcon(ReceiptText),
     },
-
-    /* =========================================
-       REQUESTS
-    ========================================= */
-
+    // {
+    //   to: "/dash/membership/giving-statements",
+    //   fullPath: "/dash/membership/giving-statements",
+    //   label: "Giving Statements",
+    //   icon: navIcon(FileText),
+    // },
     {
-      to:
-        "/dash/membership/myrequests",
-
-      fullPath:
-        "/dash/membership/myrequests",
-
-      label:
-        "My Requests",
-
-      icon:
-        "📝",
+      to: "/dash/membership/family",
+      fullPath: "/dash/membership/family",
+      label: "Family / Dependents",
+      icon: navIcon(Users),
     },
-
-    /* =========================================
-       PROFILE
-    ========================================= */
-
     {
-      to:
-        "/dash/membership/my-profile",
-
-      fullPath:
-        "/dash/membership/my-profile",
-
-      label:
-        "My Profile",
-
-      icon:
-        "👤",
+      to: "/dash/membership/documents",
+      fullPath: "/dash/membership/documents",
+      label: "Documents",
+      icon: navIcon(FolderOpen),
+    },
+    {
+      to: "/dash/membership/myrequests",
+      fullPath: "/dash/membership/myrequests",
+      label: "My Requests",
+      icon: navIcon(ClipboardList),
+    },
+    {
+      to: "/dash/membership/my-profile",
+      fullPath: "/dash/membership/my-profile",
+      label: "My Profile",
+      icon: navIcon(UserRound),
     },
   ];
 
   return (
-
     <DashboardLayout
       variant="member"
       appName="Holy Trinity EOTC"
       roleTitle="Member"
       nav={nav}
     />
-
   );
 }

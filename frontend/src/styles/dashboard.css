@@ -645,3 +645,208 @@ body.dash-body-lock {
     max-width: 100%;
   }
 }
+
+/* =========================================================
+   ENTERPRISE FIXED DASHBOARD SHELL
+   Sidebar + header stay fixed. Only page content scrolls.
+========================================================= */
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  min-height: 100%;
+}
+
+body {
+  overflow: hidden;
+}
+
+.dashboard-main-root,
+.dash-shell {
+  width: 100%;
+  height: 100dvh;
+  min-height: 100dvh;
+  overflow: hidden;
+}
+
+.dash-shell {
+  display: flex;
+  align-items: stretch;
+}
+
+/* =========================================================
+   STICKY / FIXED SIDEBAR
+========================================================= */
+
+.dash-sidebar {
+  position: relative;
+  top: auto;
+  left: auto;
+  width: 290px;
+  height: 100dvh;
+  max-height: 100dvh;
+  flex: 0 0 290px;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  scrollbar-gutter: stable;
+  z-index: 900;
+}
+
+.dash-shell.sidebar-hidden .dash-sidebar {
+  width: 0;
+  flex-basis: 0;
+  min-width: 0;
+  padding: 0;
+  opacity: 0;
+  overflow: hidden;
+}
+
+/* =========================================================
+   FIXED MAIN AREA + HEADER
+========================================================= */
+
+.dash-main-area {
+  min-width: 0;
+  flex: 1 1 auto;
+  height: 100dvh;
+  min-height: 100dvh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.dash-topbar {
+  position: relative;
+  top: auto;
+  flex: 0 0 auto;
+  min-height: 86px;
+  z-index: 850;
+}
+
+.dash-page-content {
+  flex: 1 1 auto;
+  min-height: 0;
+  min-width: 0;
+  overflow-y: auto;
+  overflow-x: hidden;
+  overscroll-behavior: contain;
+  padding: 24px;
+}
+
+.dash-content-inner {
+  width: 100%;
+  max-width: 1600px;
+  min-width: 0;
+  margin: 0 auto;
+  overflow: visible;
+}
+
+/* =========================================================
+   MOBILE DASHBOARD SHELL
+========================================================= */
+
+@media (max-width: 900px) {
+  body {
+    overflow: hidden;
+  }
+
+  .dash-shell {
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .dash-sidebar {
+    position: fixed;
+    inset: 0 auto 0 0;
+    width: 280px;
+    height: 100dvh;
+    max-height: 100dvh;
+    flex-basis: auto;
+    transform: translateX(-100%);
+    z-index: 1000;
+  }
+
+  .dash-sidebar.mobile-open {
+    transform: translateX(0);
+  }
+
+  .dash-shell.sidebar-hidden .dash-sidebar {
+    width: 280px;
+    min-width: 280px;
+    padding: 18px 14px;
+    opacity: 1;
+    overflow-y: auto;
+    transform: translateX(-100%);
+  }
+
+  .dash-main-area {
+    width: 100%;
+    height: 100dvh;
+    min-height: 100dvh;
+    overflow: hidden;
+  }
+
+  .dash-topbar {
+    min-height: 72px;
+  }
+
+  .dash-page-content {
+    padding: 16px;
+    overflow-y: auto;
+  }
+
+  .dash-overlay {
+    z-index: 950;
+  }
+}
+
+@media (max-width: 560px) {
+  .dash-topbar {
+    min-height: 64px;
+  }
+
+  .dash-page-content {
+    padding: 12px;
+  }
+}
+
+/* new css admin*/
+/* =====================================
+   ENTERPRISE MOBILE FIX
+===================================== */
+
+.dash-main-area {
+  flex: 1;
+  min-width: 0;
+  width: 100%;
+}
+
+.dash-page-content {
+  width: 100%;
+  min-width: 0;
+}
+
+.dash-content-inner {
+  width: 100%;
+  max-width: 100%;
+  min-width: 0;
+}
+
+@media (max-width: 900px) {
+  .dash-main-area {
+    width: 100%;
+    margin-left: 0;
+  }
+
+  .dash-page-content {
+    padding: 14px;
+  }
+
+  .dash-content-inner {
+    max-width: 100%;
+  }
+}

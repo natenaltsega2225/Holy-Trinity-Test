@@ -1,3042 +1,1272 @@
-// // backend/routes/financePayments.js
-
-// "use strict";
-
-// /* =========================================================
-//    ENTERPRISE FINANCE PAYMENTS ROUTES
-// ========================================================= */
-
-// const express = require("express");
-// const crypto = require("crypto");
-
-// const pool = require("../db");
-// const {
-//   sendReceiptEmail,
-// } = require("../services/domains/receipts/receiptEmailService");
-// const {
-//   authRequired,
-//   requireRole,
-// } = require("../middleware/auth");
-
-// const router =
-//   express.Router();
-
-// /* =========================================================
-//    SECURITY
-// ========================================================= */
-
-// router.use(
-//   authRequired
-// );
-
-// router.use(
-//   requireRole(
-//     "finance",
-//     "admin",
-//     "super_admin"
-//   )
-// );
-
-// /* =========================================================
-//    HELPERS
-// ========================================================= */
-
-// const columnCache =
-//   new Map();
-
-// const tableCache =
-//   new Map();
-
-// function clean(value) {
-//   return String(
-//     value ?? ""
-//   ).trim();
-// }
-
-// function toInt(
-//   value,
-//   fallback = 1
-// ) {
-//   const n = Number(value);
-
-//   return Number.isFinite(n) &&
-//     n > 0
-//     ? Math.trunc(n)
-//     : fallback;
-// }
-
-// function toMoney(value) {
-//   const n = Number(value || 0);
-
-//   return Number.isFinite(n)
-//     ? Number(n.toFixed(2))
-//     : 0;
-// }
-
-// function nowStamp() {
-//   return Date.now();
-// }
-
-// function makeCode(prefix) {
-//   return `${prefix}-${nowStamp()}-${crypto
-//     .randomBytes(3)
-//     .toString("hex")
-//     .toUpperCase()}`;
-// }
-
-// async function tableExists(
-//   conn,
-//   tableName
-// ) {
-
-//   if (
-//     tableCache.has(tableName)
-//   ) {
-//     return tableCache.get(
-//       tableName
-//     );
-//   }
-
-//   try {
-
-//     const [rows] =
-//       await conn.query(
-//         `SHOW TABLES LIKE ?`,
-//         [tableName]
-//       );
-
-//     const exists =
-//       rows.length > 0;
-
-//     tableCache.set(
-//       tableName,
-//       exists
-//     );
-
-//     return exists;
-
-//   } catch {
-
-//     tableCache.set(
-//       tableName,
-//       false
-//     );
-
-//     return false;
-//   }
-// }
-
-// async function getColumns(
-//   conn,
-//   tableName
-// ) {
-
-//   if (
-//     columnCache.has(tableName)
-//   ) {
-//     return columnCache.get(
-//       tableName
-//     );
-//   }
-
-//   const exists =
-//     await tableExists(
-//       conn,
-//       tableName
-//     );
-
-//   if (!exists) {
-
-//     columnCache.set(
-//       tableName,
-//       new Set()
-//     );
-
-//     return new Set();
-//   }
-
-//   const [rows] =
-//     await conn.query(
-//       `SHOW COLUMNS FROM \`${tableName}\``
-//     );
-
-//   const cols =
-//     new Set(
-//       rows.map(
-//         (r) => r.Field
-//       )
-//     );
-
-//   columnCache.set(
-//     tableName,
-//     cols
-//   );
-
-//   return cols;
-// }
-
-// async function insertDynamic(
-//   conn,
-//   tableName,
-//   data
-// ) {
-
-//   const cols =
-//     await getColumns(
-//       conn,
-//       tableName
-//     );
-
-//   const entries =
-//     Object.entries(data)
-//       .filter(
-//         ([key, value]) =>
-//           cols.has(key) &&
-//           value !== undefined
-//       );
-
-//   if (!entries.length) {
-//     return null;
-//   }
-
-//   const fields =
-//     entries
-//       .map(
-//         ([key]) =>
-//           `\`${key}\``
-//       )
-//       .join(", ");
-
-//   const marks =
-//     entries
-//       .map(() => "?")
-//       .join(", ");
-
-//   const values =
-//     entries.map(
-//       ([, value]) => value
-//     );
-
-//   const [result] =
-//     await conn.query(
-//       `
-//       INSERT INTO \`${tableName}\`
-//       (${fields})
-//       VALUES (${marks})
-//       `,
-//       values
-//     );
-
-//   return result.insertId;
-// }
-
-// async function updateDynamic(
-//   conn,
-//   tableName,
-//   data,
-//   whereSql,
-//   whereParams = []
-// ) {
-
-//   const cols =
-//     await getColumns(
-//       conn,
-//       tableName
-//     );
-
-//   const entries =
-//     Object.entries(data)
-//       .filter(
-//         ([key, value]) =>
-//           cols.has(key) &&
-//           value !== undefined
-//       );
-
-//   if (!entries.length) {
-//     return;
-//   }
-
-//   const setSql =
-//     entries
-//       .map(
-//         ([key]) =>
-//           `\`${key}\` = ?`
-//       )
-//       .join(", ");
-
-//   const values =
-//     entries.map(
-//       ([, value]) => value
-//     );
-
-//   await conn.query(
-//     `
-//     UPDATE \`${tableName}\`
-//     SET ${setSql}
-//     WHERE ${whereSql}
-//     `,
-//     [
-//       ...values,
-//       ...whereParams,
-//     ]
-//   );
-// }
-
-// function monthName(month) {
-
-//   const names = [
-//     "",
-//     "January",
-//     "February",
-//     "March",
-//     "April",
-//     "May",
-//     "June",
-//     "July",
-//     "August",
-//     "September",
-//     "October",
-//     "November",
-//     "December",
-//   ];
-
-//   return (
-//     names[
-//       Number(month)
-//     ] || String(month)
-//   );
-// }
-
-// function buildCoverageMonths(
-//   startYear,
-//   startMonth,
-//   monthsPaid
-// ) {
-
-//   const rows = [];
-
-//   const year =
-//     Number(startYear) ||
-//     new Date().getFullYear();
-
-//   const month =
-//     Number(startMonth) || 1;
-
-//   const count =
-//     Number(monthsPaid) || 1;
-
-//   for (
-//     let i = 0;
-//     i < count;
-//     i += 1
-//   ) {
-
-//     const d = new Date(
-//       year,
-//       month - 1 + i,
-//       1
-//     );
-
-//     rows.push({
-
-//       coverage_year:
-//         d.getFullYear(),
-
-//       month_number:
-//         d.getMonth() + 1,
-
-//       month_name:
-//         d.toLocaleString(
-//           "en-US",
-//           {
-//             month: "long",
-//           }
-//         ),
-
-//       coverage_month:
-//         `${d.getFullYear()}-${String(
-//           d.getMonth() + 1
-//         ).padStart(2, "0")}`,
-//     });
-//   }
-
-//   return rows;
-// }
-// /* =========================================================
-//    MEMBER SNAPSHOT
-// ========================================================= */
-
-// async function getMemberSnapshot(
-//   conn,
-//   memberId
-// ) {
-
-//   if (!memberId) {
-//     return null;
-//   }
-
-//   const [[member]] =
-//     await conn.query(
-//       `
-//       SELECT
-//         id,
-//         member_no,
-//         full_name,
-//         email,
-//         phone,
-//         membership_status
-//       FROM tbl_members
-//       WHERE id = ?
-//       LIMIT 1
-//       `,
-//       [memberId]
-//     );
-
-//   return member || null;
-// }
-
-// /* =========================================================
-//    CREATE INVOICE
-// ========================================================= */
-
-// async function createInvoice(
-//   conn,
-//   payment,
-//   payload
-// ) {
-
-//   const invoiceNumber =
-//     makeCode("INV");
-
-//   const invoiceId =
-//     await insertDynamic(
-//       conn,
-//       "tbl_finance_invoices",
-//       {
-//         invoice_number:
-//           invoiceNumber,
-
-//         payment_id:
-//           payment.id,
-
-//         member_id:
-//           payment.member_id,
-
-//         member_no:
-//           payment.member_no,
-
-//         full_name_snapshot:
-//           payment.full_name_snapshot,
-
-//         email_snapshot:
-//           payment.email_snapshot,
-
-//         phone_snapshot:
-//           payment.phone_snapshot,
-
-//         category:
-//           payment.category,
-
-//         sub_category:
-//           payment.sub_category,
-
-//         description:
-//           payment.description,
-
-//         total_amount:
-//           payment.amount,
-
-//         amount:
-//           payment.amount,
-
-//         paid_amount:
-//           payment.amount,
-
-//         balance_due: 0,
-
-//         status: "paid",
-
-//         due_date:
-//           new Date(),
-
-//         invoice_date:
-//           new Date(),
-
-//         paid_at:
-//           new Date(),
-
-//         created_by:
-//           payload.actor_id,
-
-//         created_at:
-//           new Date(),
-
-//         updated_at:
-//           new Date(),
-//       }
-//     );
-
-//   return {
-//     id: invoiceId,
-//     invoice_number:
-//       invoiceNumber,
-//   };
-// }
-
-// /* =========================================================
-//    CREATE RECEIPT
-// ========================================================= */
-
-// async function createReceipt(
-//   conn,
-//   payment,
-//   invoice,
-//   payload
-// ) {
-
-//   const receiptNumber =
-//     makeCode("RCPT");
-
-//   const receiptId =
-//     await insertDynamic(
-//       conn,
-//       "tbl_finance_receipts",
-//       {
-//         receipt_number:
-//           receiptNumber,
-
-//         payment_id:
-//           payment.id,
-
-//         invoice_id:
-//           invoice.id,
-
-//         invoice_number:
-//           invoice.invoice_number,
-
-//         member_id:
-//           payment.member_id,
-
-//         member_no:
-//           payment.member_no,
-
-//         full_name_snapshot:
-//           payment.full_name_snapshot,
-
-//         email_snapshot:
-//           payment.email_snapshot,
-
-//         phone_snapshot:
-//           payment.phone_snapshot,
-
-//         category:
-//           payment.category,
-
-//         sub_category:
-//           payment.sub_category,
-
-//         description:
-//           payment.description,
-
-//         amount:
-//           payment.amount,
-
-//         method:
-//           payment.method,
-
-//         provider:
-//           payment.provider,
-
-//         reference_no:
-//           payment.reference_no,
-
-//        email_status:
-//   payment.email_snapshot
-//     ? "pending"
-//     : "not_requested",
-
-// emailed_to:
-//   payment.email_snapshot || null,
-//         receipt_date:
-//           new Date(),
-
-//         created_by:
-//           payload.actor_id,
-
-//         created_at:
-//           new Date(),
-
-//         updated_at:
-//           new Date(),
-//       }
-//     );
-
-//   return {
-//     id: receiptId,
-//     receipt_number:
-//       receiptNumber,
-//   };
-// }
-
-// /* =========================================================
-//    CREATE LEDGER
-// ========================================================= */
-
-// async function createLedgerEntry(conn, payment, invoice, receipt, payload) {
-//   const tables = [
-//     "tbl_finance_member_ledger",
-//     "tbl_finance_ledger",
-//     "tbl_finance_ledger_entries",
-//     "tbl_member_ledger",
-//   ];
-
-//   const ledgerUuid = makeCode("LEDGER");
-
-//   for (const table of tables) {
-//     if (!(await tableExists(conn, table))) {
-//       continue;
-//     }
-
-//     await insertDynamic(conn, table, {
-//       ledger_uuid: ledgerUuid,
-//       ledger_number: ledgerUuid,
-
-//       member_id: payment.member_id,
-//       member_no: payment.member_no || null,
-
-//       full_name_snapshot: payment.full_name_snapshot || null,
-//       phone_snapshot: payment.phone_snapshot || null,
-
-//       record_type: "payment",
-//       ledger_type: "payment",
-//       entry_type: "payment",
-
-//       related_document_type: "receipt",
-//       related_document_id: receipt.id,
-//       related_document_number: receipt.receipt_number,
-
-//       payment_id: payment.id,
-//       invoice_id: invoice.id,
-//       receipt_id: receipt.id,
-
-//       payment_number: payment.payment_number,
-//       invoice_number: invoice.invoice_number,
-//       receipt_number: receipt.receipt_number,
-
-//       record_date: new Date(),
-
-//       category: payment.category,
-//       sub_category: payment.sub_category,
-
-//       description:
-//         payment.description ||
-//         `${payment.category || "payment"} payment`,
-
-//       debit: 0,
-//       credit: payment.amount,
-
-//       debit_amount: 0,
-//       credit_amount: payment.amount,
-
-//       amount: payment.amount,
-//       running_balance: 0,
-
-//       method: payment.method,
-//       provider: payment.provider,
-
-//       source: "finance_manual_payment",
-//       source_reference: payment.payment_number,
-
-//       reference_no: payment.reference_no,
-
-//       status: "posted",
-
-//       posted_by: payload.actor_id,
-//       created_by: payload.actor_id,
-
-//       posted_at: new Date(),
-//       created_at: new Date(),
-//       updated_at: new Date(),
-//     });
-
-//     return;
-//   }
-// }
-// /* =========================================================
-//    CREATE COVERAGE
-// ========================================================= */
-
-// async function createCoverage(
-//   conn,
-//   payment,
-//   receipt,
-//   payload
-// ) {
-
-//   if (
-//     payment.category !==
-//     "membership"
-//   ) {
-//     return;
-//   }
-
-//   const coverageTables = [
-//     "tbl_member_membership_coverage",
-//     "tbl_finance_membership_coverage",
-//     "tbl_membership_coverage",
-//   ];
-
-//  const nextCoverage =
-//   await findNextUnpaidMonth(
-//     conn,
-//     payment.member_id
-//   );
-
-// const months =
-//   buildCoverageMonths(
-//     nextCoverage.year,
-//     nextCoverage.month,
-//     payment.months_paid
-//   );
-//   for (const table of coverageTables) {
-
-//     if (
-//       !(
-//         await tableExists(
-//           conn,
-//           table
-//         )
-//       )
-//     ) {
-//       continue;
-//     }
-
-//  for (const row of months) {
-
-//   await insertDynamic(
-//     conn,
-//     table,
-//     {
-//       member_id:
-//         payment.member_id,
-
-//       payment_id:
-//         payment.id,
-
-//       receipt_id:
-//         receipt.id,
-
-//       coverage_year:
-//         row.coverage_year,
-
-//       coverage_month:
-//         row.coverage_month,
-
-//       coverage_month_name:
-//         row.month_name,
-
-//       month_number:
-//         row.month_number,
-
-//       month_name:
-//         row.month_name,
-
-//       plan_id:
-//         payload.plan_id || null,
-
-//       status:
-//         "paid",
-
-//       amount:
-//         Number(payment.amount || 0) /
-//         Math.max(months.length, 1),
-
-//       payment_number:
-//         payment.payment_number,
-
-//       receipt_number:
-//         receipt.receipt_number,
-
-//       method:
-//         payment.method,
-
-//       created_by:
-//         payload.actor_id,
-
-//       created_at:
-//         new Date(),
-
-//       updated_at:
-//         new Date(),
-//     }
-//   );
-// }
-//     return;
-//   }
-// }
-
-// /* =========================================================
-//    LIST PAYMENTS
-// ========================================================= */
-
-// router.get(
-//   "/",
-//   async (req, res) => {
-
-//     try {
-
-//       const page =
-//         toInt(
-//           req.query.page,
-//           1
-//         );
-
-//       const limit =
-//         Math.min(
-//           100,
-//           toInt(
-//             req.query.limit,
-//             25
-//           )
-//         );
-
-//       const offset =
-//         (page - 1) *
-//         limit;
-
-//       const search =
-//         clean(
-//           req.query.search
-//         );
-
-//      const paymentType =
-// clean(
-// req.query.payment_type ||
-// req.query.category
-// );
-
-// const status =
-// clean(req.query.status);
-
-// const method =
-// clean(req.query.method);
-
-// const source =
-// clean(req.query.source);
-
-// const donationCategory =
-// clean(req.query.donation_category);
-
-// const coverageYear =
-// clean(req.query.coverage_year);
-
-// const dateFrom =
-// clean(req.query.date_from);
-
-// const dateTo =
-// clean(req.query.date_to);
-
-// const invoiceNumber =
-// clean(req.query.invoice_number);
-
-// const receiptNumber =
-// clean(req.query.receipt_number);
-
-//       const where = [];
-//       const params = [];
-
-//       if (search) {
-
-//         where.push(`
-//           (
-//             p.payment_number LIKE ?
-//             OR p.full_name_snapshot LIKE ?
-//             OR p.email_snapshot LIKE ?
-//             OR p.reference_no LIKE ?
-//             OR r.receipt_number LIKE ?
-//             OR i.invoice_number LIKE ?
-//           )
-//         `);
-
-//         const q =
-//           `%${search}%`;
-
-//         params.push(
-//           q,
-//           q,
-//           q,
-//           q,
-//           q,
-//           q
-//         );
-//       }
-
-//      if (paymentType) {
-
-// where.push(`
-// (
-// p.category = ?
-// OR p.payment_type = ?
-// )
-// `);
-
-// params.push(
-// paymentType,
-// paymentType
-// );
-// }
-// if (donationCategory) {
-
-// where.push(
-// "p.donation_category = ?"
-// );
-
-// params.push(
-// donationCategory
-// );
-// }
-// if (coverageYear) {
-
-// where.push(
-// "p.coverage_year = ?"
-// );
-
-// params.push(
-// coverageYear
-// );
-// }
-// if (source) {
-
-// if (
-// source === "online"
-// ) {
-
-// where.push(`
-// (
-// p.provider='stripe'
-// OR p.method='card'
-// OR p.method='ach'
-// )
-// `);
-// }
-
-// if (
-// source === "in_person"
-// ) {
-
-// where.push(`
-// (
-// p.method IN
-// ('cash','check','zelle')
-// )
-// `);
-// }
-// }
-// if (invoiceNumber) {
-
-// where.push(
-// "i.invoice_number LIKE ?"
-// );
-
-// params.push(
-// `%${invoiceNumber}%`
-// );
-// }
-// if (receiptNumber) {
-
-// where.push(
-// "r.receipt_number LIKE ?"
-// );
-
-// params.push(
-// `%${receiptNumber}%`
-// );
-// }
-// if (dateFrom) {
-
-// where.push(
-// "DATE(p.paid_at)>=?"
-// );
-
-// params.push(dateFrom);
-// }
-
-// if (dateTo) {
-
-// where.push(
-// "DATE(p.paid_at)<=?"
-// );
-
-// params.push(dateTo);
-// }
-//       if (status) {
-//         where.push(
-//           "p.status = ?"
-//         );
-
-//         params.push(status);
-//       }
-
-//       if (method) {
-//         where.push(
-//           "p.method = ?"
-//         );
-
-//         params.push(method);
-//       }
-
-//       const whereSql =
-//         where.length
-//           ? `WHERE ${where.join(" AND ")}`
-//           : "";
-
-//       const [[countRow]] =
-//         await pool.query(
-//           `
-//           SELECT
-//             COUNT(*) AS total
-//           FROM tbl_finance_payments p
-
-//           LEFT JOIN tbl_finance_receipts r
-//             ON r.payment_id = p.id
-
-//           LEFT JOIN tbl_finance_invoices i
-//             ON i.payment_id = p.id
-
-//           ${whereSql}
-//           `,
-//           params
-//         );
-
-//       const [rows] =
-//         await pool.query(
-//           `
-//           SELECT
-//             p.*,
-
-//             r.id AS receipt_id,
-//             r.receipt_number,
-//             r.email_status,
-//             r.emailed_at,
-
-//             i.id AS invoice_id,
-//             i.invoice_number,
-//             i.balance_due
-
-//           FROM tbl_finance_payments p
-
-//           LEFT JOIN tbl_finance_receipts r
-//             ON r.payment_id = p.id
-
-//           LEFT JOIN tbl_finance_invoices i
-//             ON i.payment_id = p.id
-
-//           ${whereSql}
-
-//           ORDER BY
-//             COALESCE(
-//               p.paid_at,
-//               p.created_at
-//             ) DESC,
-//             p.id DESC
-
-//           LIMIT ?
-//           OFFSET ?
-//           `,
-//           [
-//             ...params,
-//             limit,
-//             offset,
-//           ]
-//         );
-
-//       const [[summary]] =
-//         await pool.query(
-//           `
-//           SELECT
-
-//             COUNT(*) AS total_transactions,
-
-//             COALESCE(
-//               SUM(p.amount),
-//               0
-//             ) AS total_amount,
-
-//             COALESCE(
-//               SUM(
-//                 CASE
-//                   WHEN p.category = 'membership'
-//                   THEN p.amount
-//                   ELSE 0
-//                 END
-//               ),
-//               0
-//             ) AS membership_amount,
-
-//             COALESCE(
-//               SUM(
-//                 CASE
-//                   WHEN p.category = 'donation'
-//                   THEN p.amount
-//                   ELSE 0
-//                 END
-//               ),
-//               0
-//             ) AS donation_amount
-
-//           FROM tbl_finance_payments p
-
-//           LEFT JOIN tbl_finance_receipts r
-//             ON r.payment_id = p.id
-
-//           LEFT JOIN tbl_finance_invoices i
-//             ON i.payment_id = p.id
-
-//           ${whereSql}
-//           `,
-//           params
-//         );
-
-//       return res.json({
-//         ok: true,
-
-//         rows,
-
-//         pagination: {
-//           page,
-//           limit,
-
-//           total:
-//             Number(
-//               countRow.total || 0
-//             ),
-
-//           pages:
-//             Math.ceil(
-//               Number(
-//                 countRow.total || 0
-//               ) / limit
-//             ),
-//         },
-
-//         summary,
-//       });
-
-//     } catch (err) {
-
-//       console.error(
-//         "GET /finance/payments error:",
-//         err
-//       );
-
-//       return res.status(500).json({
-//         error:
-//           "Failed to load payments.",
-//       });
-//     }
-//   }
-// );
-
-// /* =========================================================
-//    CREATE PAYMENT
-// ========================================================= */
-
-// router.post(
-//   "/",
-//   async (req, res) => {
-
-//     const conn =
-//       await pool.getConnection();
-
-//     try {
-
-//       await conn.beginTransaction();
-
-//       const body =
-//         req.body || {};
-
-//       const category =
-//         clean(
-//           body.category ||
-//           body.payment_type ||
-//           "donation"
-//         );
-
-//       const method =
-//         clean(
-//           body.method || "manual"
-//         );
-
-//       const provider =
-//         clean(
-//           body.provider || method
-//         );
-
-//       const memberId =
-//         body.member_id
-//           ? Number(
-//               body.member_id
-//             )
-//           : null;
-
-//       const member =
-//         await getMemberSnapshot(
-//           conn,
-//           memberId
-//         );
-
-//       const fullName =
-//         member?.full_name ||
-//         clean(
-//           body.full_name
-//         ) ||
-//         "Guest";
-
-//       const email =
-//         member?.email ||
-//         clean(body.email) ||
-//         null;
-
-//       const phone =
-//         member?.phone ||
-//         clean(body.phone) ||
-//         null;
-
-//       const amount =
-//         toMoney(body.amount);
-
-//       const paymentNumber =
-//         makeCode("PAY");
-
-//       const monthsPaid =
-//         toInt(
-//           body.months_paid,
-//           1
-//         );
-// const coverageYear = null;
-// const coverageStartMonth = null;
-
-//       const paymentId =
-//         await insertDynamic(
-//           conn,
-//           "tbl_finance_payments",
-//           {
-//             payment_number:
-//               paymentNumber,
-
-//             member_id:
-//               memberId,
-
-//             member_no:
-//               member?.member_no ||
-//               null,
-
-//             full_name_snapshot:
-//               fullName,
-
-//             email_snapshot:
-//               email,
-
-//             phone_snapshot:
-//               phone,
-
-//             category,
-
-//             payment_type:
-//               category,
-
-//             sub_category:
-//               body.sub_category ||
-//               null,
-
-//             amount,
-
-//             currency:
-//               body.currency ||
-//               "USD",
-
-//             months_paid:
-//               category ===
-//               "membership"
-//                 ? monthsPaid
-//                 : 0,
-
-//             method,
-
-//             provider,
-
-//             status:
-//               body.status ||
-//               "paid",
-
-//             reference_no:
-//               body.reference_no ||
-//               null,
-
-//             description:
-//               body.description ||
-//               category,
-
-//             paid_at:
-//               new Date(),
-
-//             created_at:
-//               new Date(),
-
-//             updated_at:
-//               new Date(),
-//           }
-//         );
-
-//       const payment = {
-//   id: paymentId,
-//   payment_number: paymentNumber,
-
-//   member_id: memberId,
-//   member_no: member?.member_no || null,
-
-//   full_name_snapshot: fullName,
-//   email_snapshot: email,
-//   phone_snapshot: phone,
-
-//   category,
-//   sub_category: body.sub_category || null,
-//   description: body.description || category,
-
-//   amount,
-//   method,
-//   provider,
-//   reference_no: body.reference_no || null,
-
-//   months_paid: monthsPaid,
-// };
-//      const actorPayload = {
-//   ...body,
-
-//   actor_id:
-//     req.user?.id ||
-//     req.user?.user_id ||
-//     null,
-
-//   member_id:
-//     memberId,
-// };
-//       const invoice =
-//         await createInvoice(
-//           conn,
-//           payment,
-//           actorPayload
-//         );
-
-//       const receipt =
-//         await createReceipt(
-//           conn,
-//           payment,
-//           invoice,
-//           actorPayload
-//         );
-
-//       await updateDynamic(
-//         conn,
-//         "tbl_finance_payments",
-//         {
-//           related_invoice_id:
-//             invoice.id,
-
-//           related_receipt_id:
-//             receipt.id,
-
-//           updated_at:
-//             new Date(),
-//         },
-//         "id = ?",
-//         [payment.id]
-//       );
-
-//       await createLedgerEntry(
-//         conn,
-//         payment,
-//         invoice,
-//         receipt,
-//         actorPayload
-//       );
-
-//       await createCoverage(
-//         conn,
-//         payment,
-//         receipt,
-//         actorPayload
-//       );
-
-//       await conn.commit();
-// try {
-//   if (
-//     receipt?.id &&
-//     email
-//   ) {
-//     await sendReceiptEmail(
-//       receipt.id,
-//       {
-//         email,
-//       }
-//     );
-//   }
-// } catch (emailErr) {
-//   console.error(
-//     "Manual payment receipt email failed:",
-//     emailErr
-//   );
-// }
-//       return res.status(201).json({
-//         ok: true,
-
-//         message:
-//           "Payment created successfully.",
-
-//         payment_id:
-//           paymentId,
-
-//         payment_number:
-//           paymentNumber,
-
-//         invoice,
-
-//         receipt,
-//       });
-
-//     } catch (err) {
-
-//       await conn.rollback();
-
-//       console.error(
-//         "POST /finance/payments error:",
-//         err
-//       );
-
-//       return res.status(400).json({
-//         error:
-//           err.message ||
-//           "Failed to create payment.",
-//       });
-
-//     } finally {
-
-//       conn.release();
-//     }
-//   }
-// );
-
-// /* =========================================================
-//    CAMPAIGNS
-// ========================================================= */
-
-// router.get(
-//   "/campaigns",
-//   async (_req, res) => {
-
-//     return res.json({
-//       ok: true,
-//       rows: [],
-//     });
-//   }
-// );
-
-// /* =========================================================
-//    SINGLE PAYMENT
-// ========================================================= */
-
-// router.get(
-//   "/:id",
-//   async (req, res) => {
-
-//     try {
-
-//       const [[row]] =
-//         await pool.query(
-//           `
-//           SELECT
-//             p.*,
-
-//             r.receipt_number,
-//             r.email_status,
-//             r.emailed_at,
-
-//             i.invoice_number,
-//             i.balance_due
-
-//           FROM tbl_finance_payments p
-
-//           LEFT JOIN tbl_finance_receipts r
-//             ON r.payment_id = p.id
-
-//           LEFT JOIN tbl_finance_invoices i
-//             ON i.payment_id = p.id
-
-//           WHERE p.id = ?
-//           LIMIT 1
-//           `,
-//           [req.params.id]
-//         );
-
-//       if (!row) {
-
-//         return res.status(404).json({
-//           error:
-//             "Payment not found.",
-//         });
-//       }
-
-//       return res.json({
-//         ok: true,
-//         payment: row,
-//       });
-
-//     } catch (err) {
-
-//       console.error(
-//         "GET /finance/payments/:id error:",
-//         err
-//       );
-
-//       return res.status(500).json({
-//         error:
-//           "Failed to load payment.",
-//       });
-//     }
-//   }
-// );
-
-// /* =========================================================
-//    EXPORTS
-// ========================================================= */
-
-// module.exports =
-//   router;
-
 // backend/routes/financePayments.js
-
 "use strict";
 
-/* =========================================================
-   ENTERPRISE FINANCE PAYMENTS ROUTES
-========================================================= */
-
 const express = require("express");
-const crypto = require("crypto");
-
 const pool = require("../db");
 
-const {
-  sendReceiptEmail,
-} = require("../services/domains/receipts/receiptEmailService");
+const paymentService = require("../services/paymentService");
 
 const {
   authRequired,
   requireRole,
 } = require("../middleware/auth");
 
+let receiptEmailService = {};
+let invoiceEmailService = {};
+
+try {
+  receiptEmailService = require("../services/domains/receipts/receiptEmailService");
+} catch {
+  receiptEmailService = {};
+}
+
+try {
+  invoiceEmailService = require("../services/domains/invoices/invoiceEmailService");
+} catch {
+  invoiceEmailService = {};
+}
+
 const router = express.Router();
 
-/* =========================================================
-   SECURITY
-========================================================= */
+const PAYMENT_METHODS = new Set([
+  "cash",
+  "check",
+  "zelle",
+  "bank_transfer",
+  "manual",
+  "card",
+  "ach",
+]);
 
-router.use(authRequired);
-router.use(requireRole("finance", "admin", "super_admin"));
+const ONLINE_METHODS = new Set([
+  "card",
+  "ach",
+]);
 
-/* =========================================================
-   CACHE
-========================================================= */
+const MANUAL_METHODS = new Set([
+  "cash",
+  "check",
+  "zelle",
+  "bank_transfer",
+  "manual",
+]);
 
-const columnCache = new Map();
-const tableCache = new Map();
+const PAYMENT_CATEGORIES = new Set([
+  "membership",
+  "donation",
+  "school",
+  "trip",
+  "pledge",
+  "manual",
+  "other",
+]);
 
-/* =========================================================
-   HELPERS
-========================================================= */
+const TABLES = {
+  payments: "tbl_finance_payments",
+  receipts: "tbl_finance_receipts",
+  invoices: "tbl_finance_invoices",
+  coverage: "tbl_member_membership_coverage",
+};
 
-function clean(value) {
-  return String(value ?? "").trim();
+const schemaCache = new Map();
+
+/* -------------------------------------------------------------------------- */
+/* Basic Helpers                                                              */
+/* -------------------------------------------------------------------------- */
+
+function clean(value, max = 500) {
+  return String(value ?? "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .slice(0, max);
 }
 
 function toInt(value, fallback = 1) {
   const n = Number(value);
-
-  return Number.isFinite(n) && n > 0
-    ? Math.trunc(n)
-    : fallback;
+  return Number.isFinite(n) && n > 0 ? Math.trunc(n) : fallback;
 }
 
 function toMoney(value) {
   const n = Number(value || 0);
-
-  return Number.isFinite(n)
-    ? Number(n.toFixed(2))
-    : 0;
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
 }
 
-function makeCode(prefix) {
-  return `${prefix}-${Date.now()}-${crypto
-    .randomBytes(3)
-    .toString("hex")
-    .toUpperCase()}`;
-}
+function boolFlag(value, fallback = false) {
+  if (value === undefined || value === null || value === "") {
+    return fallback;
+  }
 
-function monthName(month) {
-  return [
-    "",
-    "January",
-    "February",
-    "March",
-    "April",
-    "May",
-    "June",
-    "July",
-    "August",
-    "September",
-    "October",
-    "November",
-    "December",
-  ][Number(month)] || String(month || "");
-}
-
-function isTruthy(value) {
-  return ["true", "1", "yes", "on"].includes(
-    String(value || "").toLowerCase()
+  return ["true", "1", "yes", "y", "on"].includes(
+    String(value).trim().toLowerCase()
   );
 }
 
-async function tableExists(conn, tableName) {
-  if (tableCache.has(tableName)) {
-    return tableCache.get(tableName);
-  }
-
-  try {
-    const [rows] = await conn.query(
-      `SHOW TABLES LIKE ?`,
-      [tableName]
-    );
-
-    const exists = rows.length > 0;
-
-    tableCache.set(tableName, exists);
-
-    return exists;
-  } catch {
-    tableCache.set(tableName, false);
-    return false;
-  }
+function actorId(req) {
+  return (
+    Number(req.user?.id || 0) ||
+    Number(req.user?.user_id || 0) ||
+    Number(req.userId || 0) ||
+    null
+  );
 }
 
-async function getColumns(conn, tableName) {
-  if (columnCache.has(tableName)) {
-    return columnCache.get(tableName);
+function actorName(req) {
+  return clean(
+    req.user?.full_name ||
+      req.user?.name ||
+      req.user?.username ||
+      req.user?.email ||
+      "Finance User",
+    190
+  );
+}
+
+function qn(name) {
+  return `\`${String(name).replace(/`/g, "``")}\``;
+}
+
+function qc(alias, column) {
+  return `${alias}.${qn(column)}`;
+}
+
+function normalizeCategory(value) {
+  const raw = clean(value || "donation", 60)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  if (["dues", "membership_dues", "registration_fee"].includes(raw)) {
+    return "membership";
   }
 
-  const exists = await tableExists(conn, tableName);
-
-  if (!exists) {
-    const empty = new Set();
-    columnCache.set(tableName, empty);
-    return empty;
+  if (["giving", "tithe", "offering"].includes(raw)) {
+    return "donation";
   }
 
-  const [rows] = await conn.query(
-    `SHOW COLUMNS FROM \`${tableName}\``
+  if (["kids", "kids_school", "school_program"].includes(raw)) {
+    return "school";
+  }
+
+  if (raw === "travel") return "trip";
+  if (raw === "pledge_payment") return "pledge";
+
+  return PAYMENT_CATEGORIES.has(raw) ? raw : "donation";
+}
+
+function normalizeMethod(value) {
+  const raw = clean(value || "manual", 60)
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "_")
+    .replace(/^_|_$/g, "");
+
+  if (["stripe", "stripe_card", "credit_card", "debit_card"].includes(raw)) {
+    return "card";
+  }
+
+  if (["us_bank_account", "bank", "stripe_ach"].includes(raw)) {
+    return "ach";
+  }
+
+  if (["wire", "bank_deposit"].includes(raw)) {
+    return "bank_transfer";
+  }
+
+  if (raw === "cheque") return "check";
+
+  return PAYMENT_METHODS.has(raw) ? raw : "manual";
+}
+
+function normalizeProvider(method, value) {
+  const raw = clean(value || "", 60).toLowerCase();
+
+  if (raw) return raw;
+  if (ONLINE_METHODS.has(method)) return "stripe";
+  if (method === "zelle") return "zelle";
+  if (method === "check") return "check";
+  if (method === "cash") return "cash";
+  if (method === "bank_transfer") return "bank_transfer";
+
+  return method || "manual";
+}
+
+function normalizeStatus(value, method) {
+  const raw = clean(value || "paid", 60).toLowerCase();
+
+  if (["paid", "completed", "posted", "approved", "succeeded"].includes(raw)) {
+    return "paid";
+  }
+
+  if (["pending", "processing", "unverified"].includes(raw)) {
+    return "pending";
+  }
+
+  if (["failed", "declined"].includes(raw)) {
+    return "failed";
+  }
+
+  if (["void", "cancelled", "canceled"].includes(raw)) {
+    return "cancelled";
+  }
+
+  if (MANUAL_METHODS.has(method)) return "paid";
+
+  return "paid";
+}
+
+function referenceFromBody(body = {}, method) {
+  const reference = clean(
+    body.reference_no ||
+      body.reference_number ||
+      body.transaction_reference ||
+      body.confirmation_number ||
+      body.zelle_reference ||
+      body.check_number ||
+      body.check_no ||
+      body.bank_reference ||
+      body.stripe_payment_intent_id ||
+      body.stripe_charge_id ||
+      body.external_transaction_id ||
+      body.external_reference ||
+      "",
+    255
   );
 
-  const cols = new Set(rows.map((r) => r.Field));
+  if (reference) return reference;
+  if (method === "cash") return `CASH-${Date.now()}`;
 
-  columnCache.set(tableName, cols);
+  return "";
+}
+
+function hasStripeIdentity(body = {}) {
+  return Boolean(
+    body.stripe_payment_intent_id ||
+      body.stripe_checkout_session_id ||
+      body.stripe_charge_id ||
+      body.stripe_invoice_id
+  );
+}
+
+function shouldUseStripeCheckout(method, provider, body = {}) {
+  if (!ONLINE_METHODS.has(method)) return false;
+  if (provider !== "stripe") return false;
+  if (hasStripeIdentity(body)) return false;
+
+  return !boolFlag(body.record_confirmed_external_payment, false);
+}
+
+/* -------------------------------------------------------------------------- */
+/* Schema Helpers                                                             */
+/* -------------------------------------------------------------------------- */
+
+async function tableColumns(table) {
+  if (schemaCache.has(table)) {
+    return schemaCache.get(table);
+  }
+
+  const [rows] = await pool.query(
+    `SHOW COLUMNS FROM ${qn(table)}`
+  );
+
+  const cols = new Set(
+    rows.map((row) => row.Field)
+  );
+
+  schemaCache.set(table, cols);
 
   return cols;
 }
 
-async function insertDynamic(conn, tableName, data) {
-  const cols = await getColumns(conn, tableName);
-
-  const entries = Object.entries(data).filter(
-    ([key, value]) => cols.has(key) && value !== undefined
-  );
-
-  if (!entries.length) {
-    return null;
-  }
-
-  const fields = entries.map(([key]) => `\`${key}\``).join(", ");
-  const marks = entries.map(() => "?").join(", ");
-  const values = entries.map(([, value]) => value);
-
-  const [result] = await conn.query(
-    `
-    INSERT INTO \`${tableName}\`
-    (${fields})
-    VALUES (${marks})
-    `,
-    values
-  );
-
-  return result.insertId;
+function hasColumn(cols, column) {
+  return cols instanceof Set && cols.has(column);
 }
 
-async function updateDynamic(
-  conn,
-  tableName,
-  data,
-  whereSql,
-  whereParams = []
-) {
-  const cols = await getColumns(conn, tableName);
-
-  const entries = Object.entries(data).filter(
-    ([key, value]) => cols.has(key) && value !== undefined
-  );
-
-  if (!entries.length) {
-    return;
-  }
-
-  const setSql = entries
-    .map(([key]) => `\`${key}\` = ?`)
-    .join(", ");
-
-  const values = entries.map(([, value]) => value);
-
-  await conn.query(
-    `
-    UPDATE \`${tableName}\`
-    SET ${setSql}
-    WHERE ${whereSql}
-    `,
-    [...values, ...whereParams]
-  );
+function columnExpr(alias, cols, candidates, fallback = "NULL") {
+  const found = candidates.find((column) => hasColumn(cols, column));
+  return found ? qc(alias, found) : fallback;
 }
 
-/* =========================================================
-   MEMBER SNAPSHOT
-========================================================= */
+function coalesceExpr(alias, cols, candidates, fallback = "NULL") {
+  const parts = candidates
+    .filter((column) => hasColumn(cols, column))
+    .map((column) => qc(alias, column));
 
-async function getMemberSnapshot(conn, memberId) {
-  if (!memberId) return null;
+  if (!parts.length) return fallback;
 
-  const [[member]] = await conn.query(
-    `
-    SELECT
-      id,
-      member_no,
-      full_name,
-      email,
-      phone,
-      membership_status
-    FROM tbl_members
-    WHERE id = ?
-    LIMIT 1
-    `,
-    [memberId]
-  );
-
-  return member || null;
+  return `COALESCE(${parts.join(", ")}, ${fallback})`;
 }
 
-/* =========================================================
-   COVERAGE HELPERS
-========================================================= */
-
-async function findNextUnpaidMonth(conn, memberId) {
-  const now = new Date();
-
-  if (!memberId) {
-    return {
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-    };
-  }
-
-  const [rows] = await conn.query(
-    `
-    SELECT
-      coverage_year,
-      month_number
-    FROM tbl_member_membership_coverage
-    WHERE member_id = ?
-      AND status IN ('paid', 'completed', 'posted')
-    ORDER BY coverage_year DESC, month_number DESC
-    LIMIT 1
-    `,
-    [memberId]
-  );
-
-  if (!rows.length) {
-    return {
-      year: now.getFullYear(),
-      month: now.getMonth() + 1,
-    };
-  }
-
-  let year = Number(rows[0].coverage_year);
-  let month = Number(rows[0].month_number) + 1;
-
-  if (month > 12) {
-    month = 1;
-    year += 1;
-  }
-
-  return { year, month };
-}
-
-function buildCoverageMonths(startYear, startMonth, monthsPaid) {
-  const rows = [];
-
-  const year = Number(startYear) || new Date().getFullYear();
-  const month = Number(startMonth) || 1;
-  const count = Number(monthsPaid) || 1;
-
-  for (let i = 0; i < count; i += 1) {
-    const d = new Date(year, month - 1 + i, 1);
-
-    rows.push({
-      coverage_year: d.getFullYear(),
-      month_number: d.getMonth() + 1,
-      month_name: d.toLocaleString("en-US", {
-        month: "long",
-      }),
-      coverage_month: `${d.getFullYear()}-${String(
-        d.getMonth() + 1
-      ).padStart(2, "0")}`,
-    });
-  }
-
-  return rows;
-}
-
-function parseCoverageMonthsFromPayload(payload = {}) {
-  if (!payload.coverage_months_json) return [];
-
-  try {
-    const parsed = JSON.parse(payload.coverage_months_json);
-
-    if (!Array.isArray(parsed)) return [];
-
-    return parsed
-      .map((row) => {
-        const year = Number(row.year || payload.coverage_year || 0);
-        const monthNumber = Number(
-          row.month_number ||
-            row.monthNumber ||
-            row.month ||
-            0
-        );
-
-        if (!year || !monthNumber || monthNumber < 1 || monthNumber > 12) {
-          return null;
-        }
-
-        return {
-          coverage_year: year,
-          month_number: monthNumber,
-          month_name: monthName(monthNumber),
-          coverage_month: `${year}-${String(monthNumber).padStart(2, "0")}`,
-        };
-      })
-      .filter(Boolean);
-  } catch {
-    return [];
-  }
-}
-
-/* =========================================================
-   CREATE INVOICE
-========================================================= */
-
-async function createInvoice(conn, payment, payload) {
-  const invoiceNumber = makeCode("INV");
-
-  const invoiceId = await insertDynamic(
-    conn,
-    "tbl_finance_invoices",
-    {
-      invoice_number: invoiceNumber,
-      payment_id: payment.id,
-
-      member_id: payment.member_id,
-      member_no: payment.member_no,
-
-      full_name_snapshot: payment.full_name_snapshot,
-      email_snapshot: payment.email_snapshot,
-      phone_snapshot: payment.phone_snapshot,
-
-      category: payment.category,
-      payment_type: payment.category,
-      sub_category: payment.sub_category,
-      description: payment.description,
-
-      total_amount: payment.amount,
-      amount: payment.amount,
-      paid_amount: payment.amount,
-      balance_due: 0,
-
-      status: "paid",
-      payment_status: "paid",
-
-      due_date: new Date(),
-      invoice_date: new Date(),
-      paid_at: new Date(),
-
-      created_by: payload.actor_id,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }
-  );
+async function queryContext() {
+  const [paymentCols, receiptCols, invoiceCols] = await Promise.all([
+    tableColumns(TABLES.payments),
+    tableColumns(TABLES.receipts),
+    tableColumns(TABLES.invoices),
+  ]);
 
   return {
-    id: invoiceId,
-    invoice_number: invoiceNumber,
+    paymentCols,
+    receiptCols,
+    invoiceCols,
+
+    amountExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["amount", "paid_amount", "total_amount", "payment_amount"],
+      "0"
+    ),
+
+    categoryExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["category", "payment_type", "finance_category"],
+      "''"
+    ),
+
+    methodExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["method", "payment_method"],
+      "''"
+    ),
+
+    providerExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["provider", "payment_provider"],
+      "''"
+    ),
+
+    statusExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["status", "payment_status"],
+      "''"
+    ),
+
+    paymentDateExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      ["paid_at", "payment_date", "created_at"],
+      "NOW()"
+    ),
+
+    paymentNumberExpr: columnExpr(
+      "p",
+      paymentCols,
+      ["payment_number", "payment_no"],
+      "NULL"
+    ),
+
+    referenceExpr: coalesceExpr(
+      "p",
+      paymentCols,
+      [
+        "reference_no",
+        "reference_number",
+        "transaction_reference",
+        "stripe_payment_intent_id",
+        "stripe_charge_id",
+      ],
+      "''"
+    ),
   };
 }
 
-/* =========================================================
-   CREATE RECEIPT
-========================================================= */
-
-async function createReceipt(conn, payment, invoice, payload) {
-  const receiptNumber = makeCode("RCPT");
-
-  const receiptId = await insertDynamic(
-    conn,
-    "tbl_finance_receipts",
-    {
-      receipt_number: receiptNumber,
-
-      payment_id: payment.id,
-      invoice_id: invoice.id,
-      invoice_number: invoice.invoice_number,
-
-      member_id: payment.member_id,
-      member_no: payment.member_no,
-
-      full_name_snapshot: payment.full_name_snapshot,
-      email_snapshot: payment.email_snapshot,
-      phone_snapshot: payment.phone_snapshot,
-
-      category: payment.category,
-      payment_type: payment.category,
-      sub_category: payment.sub_category,
-      description: payment.description,
-
-      amount: payment.amount,
-
-      method: payment.method,
-      provider: payment.provider,
-      reference_no: payment.reference_no,
-
-      email_status: payment.email_snapshot
-        ? "pending"
-        : "not_requested",
-
-      emailed_to: payment.email_snapshot || null,
-
-      receipt_date: new Date(),
-      issued_at: new Date(),
-
-      created_by: payload.actor_id,
-      created_at: new Date(),
-      updated_at: new Date(),
-    }
-  );
-
-  return {
-    id: receiptId,
-    receipt_number: receiptNumber,
-  };
-}
-
-/* =========================================================
-   CREATE LEDGER
-========================================================= */
-
-async function createLedgerEntry(conn, payment, invoice, receipt, payload) {
-  const tables = [
-    "tbl_finance_member_ledger",
-    "tbl_finance_ledger",
-    "tbl_finance_ledger_entries",
-    "tbl_member_ledger",
-  ];
-
-  const ledgerUuid = makeCode("LEDGER");
-
-  for (const table of tables) {
-    if (!(await tableExists(conn, table))) continue;
-
-    await insertDynamic(conn, table, {
-      ledger_uuid: ledgerUuid,
-      ledger_number: ledgerUuid,
-
-      member_id: payment.member_id,
-      member_no: payment.member_no || null,
-
-      full_name_snapshot: payment.full_name_snapshot || null,
-      phone_snapshot: payment.phone_snapshot || null,
-
-      record_type: "payment",
-      ledger_type: "payment",
-      entry_type: "payment",
-
-      related_document_type: "receipt",
-      related_document_id: receipt.id,
-      related_document_number: receipt.receipt_number,
-
-      payment_id: payment.id,
-      invoice_id: invoice.id,
-      receipt_id: receipt.id,
-
-      payment_number: payment.payment_number,
-      invoice_number: invoice.invoice_number,
-      receipt_number: receipt.receipt_number,
-
-      record_date: new Date(),
-
-      category: payment.category,
-      payment_type: payment.category,
-      sub_category: payment.sub_category,
-
-      description:
-        payment.description ||
-        `${payment.category || "payment"} payment`,
-
-      debit: 0,
-      credit: payment.amount,
-      debit_amount: 0,
-      credit_amount: payment.amount,
-
-      amount: payment.amount,
-      running_balance: 0,
-
-      method: payment.method,
-      provider: payment.provider,
-
-      source: "finance_manual_payment",
-      source_reference: payment.payment_number,
-
-      reference_no: payment.reference_no,
-
-      status: "posted",
-
-      posted_by: payload.actor_id,
-      created_by: payload.actor_id,
-
-      posted_at: new Date(),
-      created_at: new Date(),
-      updated_at: new Date(),
-    });
-
-    return;
-  }
-}
-
-/* =========================================================
-   CREATE MEMBERSHIP COVERAGE
-========================================================= */
-
-async function createCoverage(conn, payment, receipt, payload) {
-  if (payment.category !== "membership") return;
-  if (!payment.member_id) return;
-
-  const coverageTables = [
-    "tbl_member_membership_coverage",
-    "tbl_finance_membership_coverage",
-    "tbl_membership_coverage",
-  ];
-
-  let months = parseCoverageMonthsFromPayload(payload);
-
-  if (!months.length && payload.coverage_year && payload.coverage_start_month) {
-    months = buildCoverageMonths(
-      payload.coverage_year,
-      payload.coverage_start_month,
-      payment.months_paid
-    );
-  }
-
-  if (!months.length) {
-    const nextCoverage = await findNextUnpaidMonth(
-      conn,
-      payment.member_id
-    );
-
-    months = buildCoverageMonths(
-      nextCoverage.year,
-      nextCoverage.month,
-      payment.months_paid
-    );
-  }
-
-  for (const table of coverageTables) {
-    if (!(await tableExists(conn, table))) continue;
-
-    for (const row of months) {
-      const amountPerMonth = toMoney(
-        Number(payment.amount || 0) /
-          Math.max(months.length, 1)
-      );
-
-      try {
-        await insertDynamic(conn, table, {
-          member_id: payment.member_id,
-
-          payment_id: payment.id,
-          receipt_id: receipt.id,
-          invoice_id: payment.invoice_id || null,
-
-          coverage_year: row.coverage_year,
-          coverage_month: row.coverage_month,
-          coverage_month_name: row.month_name,
-          month_number: row.month_number,
-          month_name: row.month_name,
-          coverage_key: row.coverage_month,
-
-          plan_id: payload.plan_id || payload.dues_plan_id || null,
-          plan_name: payload.plan_name || null,
-
-          status: "paid",
-
-          amount: amountPerMonth,
-
-          payment_number: payment.payment_number,
-          receipt_number: receipt.receipt_number,
-          invoice_number: payment.invoice_number || null,
-
-          method: payment.method,
-          provider: payment.provider,
-
-          created_by: payload.actor_id,
-          created_at: new Date(),
-          updated_at: new Date(),
-        });
-      } catch (err) {
-        await conn
-          .query(
-            `
-            UPDATE ${table}
-            SET
-              payment_id = ?,
-              receipt_id = ?,
-              status = 'paid',
-              amount = ?,
-              payment_number = ?,
-              receipt_number = ?,
-              method = ?,
-              provider = ?,
-              updated_at = NOW()
-            WHERE member_id = ?
-              AND coverage_year = ?
-              AND month_number = ?
-            `,
-            [
-              payment.id,
-              receipt.id,
-              amountPerMonth,
-              payment.payment_number,
-              receipt.receipt_number,
-              payment.method,
-              payment.provider,
-              payment.member_id,
-              row.coverage_year,
-              row.month_number,
-            ]
-          )
-          .catch(() => {});
-      }
-    }
-
-    return;
-  }
-}
-
-// /* =========================================================
-//    LIST PAYMENTS
-// ========================================================= */
-
-// router.get("/", async (req, res) => {
-//   try {
-//     const page = toInt(req.query.page, 1);
-//     const limit = Math.min(
-//       100,
-//       toInt(req.query.limit || req.query.pageSize, 25)
-//     );
-//     const offset = (page - 1) * limit;
-
-//     const search = clean(req.query.search || req.query.q);
-
-//     const paymentType = clean(
-//       req.query.payment_type ||
-//         req.query.category ||
-//         req.query.type
-//     );
-
-//     const status = clean(req.query.status);
-//     const method = clean(req.query.method);
-//     const provider = clean(req.query.provider);
-//     const source = clean(req.query.source);
-//     const donationCategory = clean(req.query.donation_category);
-//     const coverageYear = clean(req.query.coverage_year);
-//     const dateFrom = clean(req.query.date_from);
-//     const dateTo = clean(req.query.date_to);
-//     const invoiceNumber = clean(req.query.invoice_number);
-//     const receiptNumber = clean(req.query.receipt_number);
-//     const memberId = clean(req.query.member_id);
-//     const minAmount = clean(req.query.amount_from);
-//     const maxAmount = clean(req.query.amount_to);
-
-//     const where = [];
-//     const params = [];
-
-//     if (search) {
-//       where.push(`
-//         (
-//           p.payment_number LIKE ?
-//           OR p.full_name_snapshot LIKE ?
-//           OR p.email_snapshot LIKE ?
-//           OR p.phone_snapshot LIKE ?
-//           OR p.reference_no LIKE ?
-//           OR r.receipt_number LIKE ?
-//           OR i.invoice_number LIKE ?
-//         )
-//       `);
-
-//       const q = `%${search}%`;
-//       params.push(q, q, q, q, q, q, q);
-//     }
-
-//     if (memberId) {
-//       where.push("p.member_id = ?");
-//       params.push(memberId);
-//     }
-
-//     if (paymentType) {
-//       where.push(`
-//         (
-//           p.category = ?
-//           OR p.payment_type = ?
-//         )
-//       `);
-
-//       params.push(paymentType, paymentType);
-//     }
-
-//     if (status) {
-//       where.push(`
-//         (
-//           p.status = ?
-//           OR p.payment_status = ?
-//         )
-//       `);
-
-//       params.push(status, status);
-//     }
-
-//     if (method) {
-//       where.push(`
-//         (
-//           p.method = ?
-//           OR p.payment_method = ?
-//         )
-//       `);
-
-//       params.push(method, method);
-//     }
-
-//     if (provider) {
-//       where.push(`
-//         (
-//           p.provider = ?
-//           OR p.payment_provider = ?
-//         )
-//       `);
-
-//       params.push(provider, provider);
-//     }
-
-//     if (donationCategory) {
-//       where.push("p.donation_category = ?");
-//       params.push(donationCategory);
-//     }
-
-//     if (coverageYear) {
-//       where.push("p.coverage_year = ?");
-//       params.push(coverageYear);
-//     }
-
-//     if (source === "online") {
-//       where.push(`
-//         (
-//           p.provider = 'stripe'
-//           OR p.payment_provider = 'stripe'
-//           OR p.method IN ('card', 'ach')
-//           OR p.payment_method IN ('card', 'ach')
-//         )
-//       `);
-//     }
-
-//     if (source === "in_person") {
-//       where.push(`
-//         (
-//           p.method IN ('cash', 'check', 'zelle', 'manual')
-//           OR p.payment_method IN ('cash', 'check', 'zelle', 'manual')
-//         )
-//       `);
-//     }
-
-//     if (invoiceNumber) {
-//       where.push("i.invoice_number LIKE ?");
-//       params.push(`%${invoiceNumber}%`);
-//     }
-
-//     if (receiptNumber) {
-//       where.push("r.receipt_number LIKE ?");
-//       params.push(`%${receiptNumber}%`);
-//     }
-
-//     if (dateFrom) {
-//       where.push("DATE(COALESCE(p.paid_at, p.created_at)) >= ?");
-//       params.push(dateFrom);
-//     }
-
-//     if (dateTo) {
-//       where.push("DATE(COALESCE(p.paid_at, p.created_at)) <= ?");
-//       params.push(dateTo);
-//     }
-
-//     if (minAmount) {
-//       where.push("p.amount >= ?");
-//       params.push(Number(minAmount));
-//     }
-
-//     if (maxAmount) {
-//       where.push("p.amount <= ?");
-//       params.push(Number(maxAmount));
-//     }
-
-//     const whereSql = where.length
-//       ? `WHERE ${where.join(" AND ")}`
-//       : "";
-
-//     const [[countRow]] = await pool.query(
-//       `
-//       SELECT COUNT(DISTINCT p.id) AS total
-//       FROM tbl_finance_payments p
-
-//       LEFT JOIN tbl_finance_receipts r
-//         ON r.payment_id = p.id
-
-//       LEFT JOIN tbl_finance_invoices i
-//         ON i.payment_id = p.id
-
-//       ${whereSql}
-//       `,
-//       params
-//     );
-
-//     const [rows] = await pool.query(
-//   `
-//   SELECT
-//     p.*,
-
-//     r.id AS receipt_id,
-//     r.receipt_number,
-//     r.email_status,
-//     r.emailed_at,
-
-//     i.id AS invoice_id,
-//     i.invoice_number,
-//     i.balance_due
-
-//   FROM tbl_finance_payments p
-
-//   /* =====================================================
-//      LATEST RECEIPT
-//   ===================================================== */
-
-//   LEFT JOIN (
-//     SELECT
-//       payment_id,
-//       MAX(id) AS receipt_id
-//     FROM tbl_finance_receipts
-//     GROUP BY payment_id
-//   ) latest_r
-//     ON latest_r.payment_id = p.id
-
-//   LEFT JOIN tbl_finance_receipts r
-//     ON r.id = latest_r.receipt_id
-
-//   /* =====================================================
-//      LATEST INVOICE
-//   ===================================================== */
-
-//   LEFT JOIN (
-//     SELECT
-//       payment_id,
-//       MAX(id) AS invoice_id
-//     FROM tbl_finance_invoices
-//     GROUP BY payment_id
-//   ) latest_i
-//     ON latest_i.payment_id = p.id
-
-//   LEFT JOIN tbl_finance_invoices i
-//     ON i.id = latest_i.invoice_id
-
-//   ${whereSql}
-
-//   ORDER BY
-//     COALESCE(p.paid_at, p.created_at) DESC,
-//     p.id DESC
-
-//   LIMIT ?
-//   OFFSET ?
-//   `,
-//   [...params, limit, offset]
-// );
-//     const [[summary]] = await pool.query(
-//       `
-//       SELECT
-//         COUNT(DISTINCT p.id) AS total_transactions,
-
-//         COALESCE(SUM(p.amount), 0) AS total_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.category = 'membership'
-//                 OR p.payment_type = 'membership'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS membership_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.category = 'donation'
-//                 OR p.payment_type = 'donation'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS donation_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.category IN ('school', 'trip')
-//                 OR p.payment_type IN ('school', 'trip')
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS program_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.method = 'cash'
-//                 OR p.payment_method = 'cash'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS cash_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.method = 'check'
-//                 OR p.payment_method = 'check'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS check_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.method = 'zelle'
-//                 OR p.payment_method = 'zelle'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS zelle_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.method = 'card'
-//                 OR p.payment_method = 'card'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS card_amount,
-
-//         COALESCE(
-//           SUM(
-//             CASE
-//               WHEN p.method = 'ach'
-//                 OR p.payment_method = 'ach'
-//               THEN p.amount
-//               ELSE 0
-//             END
-//           ),
-//           0
-//         ) AS ach_amount
-
-//       FROM tbl_finance_payments p
-
-//       LEFT JOIN tbl_finance_receipts r
-//         ON r.payment_id = p.id
-
-//       LEFT JOIN tbl_finance_invoices i
-//         ON i.payment_id = p.id
-
-//       ${whereSql}
-//       `,
-//       params
-//     );
-
-//     return res.json({
-//       ok: true,
-//       rows,
-//       pagination: {
-//         page,
-//         limit,
-//         total: Number(countRow.total || 0),
-//         pages: Math.max(
-//           1,
-//           Math.ceil(Number(countRow.total || 0) / limit)
-//         ),
-//       },
-//       summary,
-//       total: Number(countRow.total || 0),
-//       page,
-//       limit,
-//       totalPages: Math.max(
-//         1,
-//         Math.ceil(Number(countRow.total || 0) / limit)
-//       ),
-//     });
-//   } catch (err) {
-//     console.error("GET /finance/payments error:", err);
-
-//     return res.status(500).json({
-//       ok: false,
-//       error: err.message || "Failed to load payments.",
-//     });
-//   }
-// });
-/* =========================================================
-   LIST PAYMENTS
-========================================================= */
-
-router.get("/", async (req, res) => {
-  try {
-    const page = toInt(req.query.page, 1);
-
-    const limit = Math.min(
-      100,
-      toInt(
-        req.query.limit ||
-          req.query.pageSize,
-        25
-      )
-    );
-
-    const offset = (page - 1) * limit;
-
-    const search = clean(
-      req.query.search ||
-        req.query.q
-    );
-
-    const paymentType = clean(
-      req.query.payment_type ||
-        req.query.category ||
-        req.query.type
-    );
-
-    const status = clean(req.query.status);
-    const method = clean(req.query.method);
-    const provider = clean(req.query.provider);
-    const source = clean(req.query.source);
-
-    const donationCategory = clean(
-      req.query.donation_category
-    );
-
-    const coverageYear = clean(
-      req.query.coverage_year
-    );
-
-    const dateFrom = clean(req.query.date_from);
-    const dateTo = clean(req.query.date_to);
-
-    const invoiceNumber = clean(
-      req.query.invoice_number
-    );
-
-    const receiptNumber = clean(
-      req.query.receipt_number
-    );
-
-    const memberId = clean(req.query.member_id);
-    const minAmount = clean(req.query.amount_from);
-    const maxAmount = clean(req.query.amount_to);
-
-    const where = [];
-    const params = [];
-
-    /* =====================================================
-       SEARCH
-    ===================================================== */
-
-    if (search) {
-      where.push(`
-        (
-          p.payment_number LIKE ?
-          OR p.full_name_snapshot LIKE ?
-          OR p.email_snapshot LIKE ?
-          OR p.phone_snapshot LIKE ?
-          OR p.member_no LIKE ?
-          OR p.reference_no LIKE ?
-          OR r.receipt_number LIKE ?
-          OR i.invoice_number LIKE ?
-        )
-      `);
-
-      const q = `%${search}%`;
-
-      params.push(
-        q,
-        q,
-        q,
-        q,
-        q,
-        q,
-        q,
-        q
-      );
-    }
-
-    /* =====================================================
-       FILTERS
-    ===================================================== */
-
-    if (memberId) {
-      where.push("p.member_id = ?");
-      params.push(memberId);
-    }
-
-    if (paymentType) {
-      where.push(`
-        (
-          p.category = ?
-          OR p.payment_type = ?
-        )
-      `);
-
-      params.push(
-        paymentType,
-        paymentType
-      );
-    }
-
-    if (status) {
-      where.push(`
-        (
-          p.status = ?
-          OR p.payment_status = ?
-        )
-      `);
-
-      params.push(
-        status,
-        status
-      );
-    }
-
-    if (method) {
-      where.push(`
-        (
-          p.method = ?
-          OR p.payment_method = ?
-        )
-      `);
-
-      params.push(
-        method,
-        method
-      );
-    }
-
-    if (provider) {
-      where.push(`
-        (
-          p.provider = ?
-          OR p.payment_provider = ?
-        )
-      `);
-
-      params.push(
-        provider,
-        provider
-      );
-    }
-
-    if (donationCategory) {
-      where.push(`
-        (
-          p.donation_category = ?
-          OR p.sub_category = ?
-        )
-      `);
-
-      params.push(
-        donationCategory,
-        donationCategory
-      );
-    }
-
-    if (coverageYear) {
-      where.push("p.coverage_year = ?");
-      params.push(coverageYear);
-    }
-
-    if (source === "online") {
-      where.push(`
-        (
-          p.provider = 'stripe'
-          OR p.payment_provider = 'stripe'
-          OR p.method IN ('card', 'ach')
-          OR p.payment_method IN ('card', 'ach')
-        )
-      `);
-    }
-
-    if (source === "in_person") {
-      where.push(`
-        (
-          p.method IN ('cash', 'check', 'zelle', 'manual', 'bank_deposit')
-          OR p.payment_method IN ('cash', 'check', 'zelle', 'manual', 'bank_deposit')
-        )
-      `);
-    }
-
-    if (invoiceNumber) {
-      where.push("i.invoice_number LIKE ?");
-      params.push(`%${invoiceNumber}%`);
-    }
-
-    if (receiptNumber) {
-      where.push("r.receipt_number LIKE ?");
-      params.push(`%${receiptNumber}%`);
-    }
-
-    if (dateFrom) {
-      where.push(`
-
-        DATE(
-  COALESCE(
-    p.paid_at,
-    p.created_at
-  )
-) >= ?
-      `);
-
-      params.push(dateFrom);
-    }
-
-    if (dateTo) {
-      where.push(`
-
-       DATE(
-  COALESCE(
-    p.paid_at,
-    p.created_at
-  )
-) <= ?
-      `);
-
-      params.push(dateTo);
-    }
-
-    if (minAmount) {
-      where.push("p.amount >= ?");
-      params.push(Number(minAmount));
-    }
-
-    if (maxAmount) {
-      where.push("p.amount <= ?");
-      params.push(Number(maxAmount));
-    }
-
-    const whereSql = where.length
-      ? `WHERE ${where.join(" AND ")}`
-      : "";
-
-    /* =====================================================
-       BASE JOIN
-       Latest receipt/invoice only.
-       Prevents duplicate rows and ONLY_FULL_GROUP_BY errors.
-    ===================================================== */
-
-    const baseJoinSql = `
-      FROM tbl_finance_payments p
-
+function baseJoinSql(ctx) {
+  const receiptJoin = hasColumn(ctx.receiptCols, "payment_id")
+    ? `
       LEFT JOIN (
         SELECT
           payment_id,
           MAX(id) AS receipt_id
         FROM tbl_finance_receipts
+        WHERE payment_id IS NOT NULL
         GROUP BY payment_id
       ) latest_r
         ON latest_r.payment_id = p.id
 
       LEFT JOIN tbl_finance_receipts r
-        ON r.id = latest_r.receipt_id
+        ON r.id = ${
+          hasColumn(ctx.paymentCols, "receipt_id")
+            ? "COALESCE(p.receipt_id, latest_r.receipt_id)"
+            : "latest_r.receipt_id"
+        }
+    `
+    : `
+      LEFT JOIN tbl_finance_receipts r
+        ON 1 = 0
+    `;
 
+  const invoiceJoin = hasColumn(ctx.invoiceCols, "payment_id")
+    ? `
       LEFT JOIN (
         SELECT
           payment_id,
           MAX(id) AS invoice_id
         FROM tbl_finance_invoices
+        WHERE payment_id IS NOT NULL
         GROUP BY payment_id
       ) latest_i
         ON latest_i.payment_id = p.id
 
       LEFT JOIN tbl_finance_invoices i
-        ON i.id = latest_i.invoice_id
+        ON i.id = ${
+          hasColumn(ctx.paymentCols, "invoice_id")
+            ? "COALESCE(p.invoice_id, latest_i.invoice_id)"
+            : "latest_i.invoice_id"
+        }
+    `
+    : `
+      LEFT JOIN tbl_finance_invoices i
+        ON 1 = 0
     `;
 
-    /* =====================================================
-       COUNT
-    ===================================================== */
+  return `
+    FROM tbl_finance_payments p
+    ${receiptJoin}
+    ${invoiceJoin}
+  `;
+}
 
-    const [[countRow]] = await pool.query(
-      `
-      SELECT
-        COUNT(*) AS total
+function selectSql(ctx) {
+  return `
+    p.*,
 
-      ${baseJoinSql}
+    r.id AS receipt_id,
+    ${columnExpr("r", ctx.receiptCols, ["receipt_number", "receipt_no"], "NULL")} AS receipt_number,
+    ${columnExpr("r", ctx.receiptCols, ["status"], "NULL")} AS receipt_status,
+    ${columnExpr("r", ctx.receiptCols, ["email_status"], "NULL")} AS receipt_email_status,
+    ${columnExpr("r", ctx.receiptCols, ["emailed_at", "sent_at"], "NULL")} AS receipt_emailed_at,
+    ${columnExpr("r", ctx.receiptCols, ["emailed_to", "recipient_email"], "NULL")} AS receipt_emailed_to,
 
-      ${whereSql}
-      `,
-      params
+    i.id AS invoice_id,
+    ${columnExpr("i", ctx.invoiceCols, ["invoice_number", "invoice_no"], "NULL")} AS invoice_number,
+    ${columnExpr("i", ctx.invoiceCols, ["status"], "NULL")} AS invoice_status,
+    ${coalesceExpr("i", ctx.invoiceCols, ["balance_due", "remaining_amount"], "NULL")} AS invoice_balance_due
+  `;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Validation / Payload                                                       */
+/* -------------------------------------------------------------------------- */
+
+function validatePaymentInput(body = {}) {
+  const category = normalizeCategory(
+    body.category ||
+      body.payment_type ||
+      body.type
+  );
+
+  const method = normalizeMethod(
+    body.method ||
+      body.payment_method
+  );
+
+  const provider = normalizeProvider(
+    method,
+    body.provider ||
+      body.payment_provider
+  );
+
+  const amount = toMoney(
+    body.amount ||
+      body.total_amount ||
+      body.paid_amount ||
+      body.payment_amount
+  );
+
+  const status = normalizeStatus(
+    body.status ||
+      body.payment_status,
+    method
+  );
+
+  const referenceNo = referenceFromBody(body, method);
+
+  if (amount <= 0) {
+    throw new Error("Payment amount must be greater than zero.");
+  }
+
+  if (category === "membership" && !body.member_id && !body.member_no) {
+    throw new Error("Membership payment requires a selected member.");
+  }
+
+  if (shouldUseStripeCheckout(method, provider, body)) {
+    const err = new Error(
+      "Card and ACH Stripe payments must use checkout before a finance payment record is created."
     );
 
-    /* =====================================================
-       ROWS
-    ===================================================== */
+    err.statusCode = 409;
+    err.requires_checkout = true;
+    throw err;
+  }
+
+  if (method === "check" && !referenceNo) {
+    throw new Error("Check payment requires a check number or reference number.");
+  }
+
+  if (method === "zelle" && !referenceNo) {
+    throw new Error("Zelle payment requires a confirmation/reference number.");
+  }
+
+  if (method === "bank_transfer" && !referenceNo) {
+    throw new Error("Bank transfer payment requires a reference number.");
+  }
+
+  if (ONLINE_METHODS.has(method) && provider !== "stripe" && !referenceNo) {
+    throw new Error("External card/ACH payment requires a transaction reference.");
+  }
+
+  return {
+    category,
+    method,
+    provider,
+    amount,
+    status,
+    referenceNo,
+  };
+}
+
+function buildPaymentPayload(req) {
+  const body = req.body || {};
+  const normalized = validatePaymentInput(body);
+  const userId = actorId(req);
+
+  const payerName = clean(
+    body.full_name ||
+      body.full_name_snapshot ||
+      body.member_name ||
+      body.donor_name ||
+      body.guest_name ||
+      body.payer_name ||
+      "",
+    255
+  );
+
+  const payerEmail = clean(
+    body.email ||
+      body.email_snapshot ||
+      body.member_email ||
+      body.donor_email ||
+      body.guest_email ||
+      body.payer_email ||
+      "",
+    255
+  );
+
+  const payerPhone = clean(
+    body.phone ||
+      body.phone_snapshot ||
+      body.member_phone ||
+      body.donor_phone ||
+      body.guest_phone ||
+      body.payer_phone ||
+      "",
+    80
+  );
+
+  const source =
+    body.source ||
+    body.created_from ||
+    (MANUAL_METHODS.has(normalized.method)
+      ? "finance_manual_payment"
+      : "finance_external_payment");
+
+  return {
+    ...body,
+
+    actor_id: userId,
+    created_by: userId,
+    recorded_by: userId,
+    finance_created_by: userId,
+    staff_id: userId,
+    staff_name: actorName(req),
+
+    payment_type: normalized.category,
+    category: normalized.category,
+
+    method: normalized.method,
+    payment_method: normalized.method,
+
+    provider: normalized.provider,
+    payment_provider: normalized.provider,
+
+    status: normalized.status,
+    payment_status: normalized.status,
+
+    amount: normalized.amount,
+    total_amount: normalized.amount,
+    paid_amount: normalized.amount,
+    payment_amount: normalized.amount,
+
+    reference_no: normalized.referenceNo || null,
+    reference_number: normalized.referenceNo || null,
+    transaction_reference:
+      body.transaction_reference ||
+      normalized.referenceNo ||
+      null,
+
+    check_number:
+      normalized.method === "check"
+        ? normalized.referenceNo
+        : body.check_number || null,
+
+    zelle_reference:
+      normalized.method === "zelle"
+        ? normalized.referenceNo
+        : body.zelle_reference || null,
+
+    member_id: body.member_id || null,
+    member_no: body.member_no || null,
+
+    payer_type:
+      body.payer_type ||
+      (body.member_id || body.member_no ? "member" : "non_member"),
+
+    full_name: payerName || null,
+    email: payerEmail || null,
+    phone: payerPhone || null,
+
+    full_name_snapshot: payerName || null,
+    email_snapshot: payerEmail || null,
+    phone_snapshot: payerPhone || null,
+
+    invoice_id: body.invoice_id || null,
+    invoice_number: body.invoice_number || null,
+
+    pledge_id: body.pledge_id || null,
+    pledge_number: body.pledge_number || null,
+    campaign_id: body.campaign_id || null,
+    campaign_name: body.campaign_name || null,
+
+    registration_id: body.registration_id || null,
+    news_event_id: body.news_event_id || body.program_id || null,
+    program_id: body.program_id || body.news_event_id || null,
+    program_name: body.program_name || body.program_title || null,
+    program_title: body.program_title || body.program_name || null,
+
+    donation_category:
+      body.donation_category ||
+      body.sub_category ||
+      null,
+
+    sub_category:
+      body.sub_category ||
+      body.donation_category ||
+      body.program_name ||
+      body.campaign_name ||
+      null,
+
+    coverage_year: body.coverage_year || null,
+    coverage_start_month: body.coverage_start_month || null,
+    coverage_end_month: body.coverage_end_month || null,
+    coverage_label: body.coverage_label || null,
+    coverage_months_json:
+      body.coverage_months_json ||
+      body.coverage_months ||
+      null,
+    months_paid:
+      body.months_paid ||
+      body.duration_months ||
+      null,
+
+    plan_id:
+      body.plan_id ||
+      body.dues_plan_id ||
+      body.membership_plan_id ||
+      null,
+    dues_plan_id: body.dues_plan_id || body.plan_id || null,
+    membership_plan_id:
+      body.membership_plan_id ||
+      body.plan_id ||
+      null,
+    plan_name: body.plan_name || null,
+
+    participants: body.participants || null,
+    participants_json: body.participants_json || null,
+    pricing_tier_id: body.pricing_tier_id || null,
+    pricing_tier_label: body.pricing_tier_label || null,
+
+    create_invoice: boolFlag(body.create_invoice, true),
+    create_receipt: boolFlag(body.create_receipt, true),
+    create_ledger_entry: boolFlag(body.create_ledger_entry, true),
+
+    send_receipt_email: boolFlag(body.send_receipt_email, true),
+    send_invoice_email: boolFlag(body.send_invoice_email, false),
+    send_welcome_email: boolFlag(body.send_welcome_email, false),
+
+    source,
+    created_from: source,
+
+    notes: body.notes || body.note || null,
+    description:
+      body.description ||
+      body.notes ||
+      body.note ||
+      null,
+
+    metadata: {
+      ...(body.metadata || {}),
+      source,
+      finance_route: "financePayments",
+      manual_entry: MANUAL_METHODS.has(normalized.method),
+      recorded_by: userId,
+      staff_name: actorName(req),
+      reference_no: normalized.referenceNo || null,
+      invoice_id: body.invoice_id || null,
+      invoice_number: body.invoice_number || null,
+      pledge_id: body.pledge_id || null,
+      pledge_number: body.pledge_number || null,
+      campaign_id: body.campaign_id || null,
+      campaign_name: body.campaign_name || null,
+    },
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Filtering                                                                  */
+/* -------------------------------------------------------------------------- */
+
+function addAnyLike(where, params, expressions, value) {
+  const usable = expressions.filter(Boolean);
+
+  if (!usable.length || !value) return;
+
+  where.push(
+    `(${usable.map((expr) => `${expr} LIKE ?`).join(" OR ")})`
+  );
+
+  for (let i = 0; i < usable.length; i += 1) {
+    params.push(`%${value}%`);
+  }
+}
+
+function buildWhere(req, ctx) {
+  const q = clean(req.query.q || req.query.search);
+  const paymentType = clean(req.query.payment_type || req.query.category || req.query.type);
+  const status = clean(req.query.status);
+  const method = clean(req.query.method || req.query.payment_method);
+  const provider = clean(req.query.provider || req.query.payment_provider);
+  const source = clean(req.query.source);
+  const donationCategory = clean(req.query.donation_category);
+  const coverageYear = clean(req.query.coverage_year);
+  const dateFrom = clean(req.query.date_from || req.query.from);
+  const dateTo = clean(req.query.date_to || req.query.to);
+  const invoiceNumber = clean(req.query.invoice_number);
+  const receiptNumber = clean(req.query.receipt_number);
+  const paymentNumber = clean(req.query.payment_number);
+  const referenceNo = clean(req.query.reference_no || req.query.reference);
+  const memberId = clean(req.query.member_id);
+  const memberNo = clean(req.query.member_no);
+  const campaignId = clean(req.query.campaign_id);
+  const pledgeId = clean(req.query.pledge_id);
+  const amountFrom = clean(req.query.amount_from || req.query.min_amount);
+  const amountTo = clean(req.query.amount_to || req.query.max_amount);
+
+  const where = [];
+  const params = [];
+
+  if (q) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("p", ctx.paymentCols, ["payment_number", "payment_no"], null),
+        columnExpr("p", ctx.paymentCols, ["full_name_snapshot", "full_name", "payer_name"], null),
+        columnExpr("p", ctx.paymentCols, ["email_snapshot", "email", "payer_email"], null),
+        columnExpr("p", ctx.paymentCols, ["phone_snapshot", "phone", "payer_phone"], null),
+        columnExpr("p", ctx.paymentCols, ["member_no", "member_number"], null),
+        ctx.referenceExpr,
+        columnExpr("r", ctx.receiptCols, ["receipt_number", "receipt_no"], null),
+        columnExpr("i", ctx.invoiceCols, ["invoice_number", "invoice_no"], null),
+      ],
+      q
+    );
+  }
+
+  if (memberId && hasColumn(ctx.paymentCols, "member_id")) {
+    where.push(`${qc("p", "member_id")} = ?`);
+    params.push(memberId);
+  }
+
+  if (memberNo) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("p", ctx.paymentCols, ["member_no", "member_number"], null),
+      ],
+      memberNo
+    );
+  }
+
+  if (campaignId && hasColumn(ctx.paymentCols, "campaign_id")) {
+    where.push(`${qc("p", "campaign_id")} = ?`);
+    params.push(campaignId);
+  }
+
+  if (pledgeId && hasColumn(ctx.paymentCols, "pledge_id")) {
+    where.push(`${qc("p", "pledge_id")} = ?`);
+    params.push(pledgeId);
+  }
+
+  if (paymentNumber) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("p", ctx.paymentCols, ["payment_number", "payment_no"], null),
+      ],
+      paymentNumber
+    );
+  }
+
+  if (paymentType) {
+    where.push(`LOWER(${ctx.categoryExpr}) = ?`);
+    params.push(normalizeCategory(paymentType));
+  }
+
+  if (status) {
+    where.push(`LOWER(${ctx.statusExpr}) = ?`);
+    params.push(status.toLowerCase());
+  }
+
+  if (method) {
+    where.push(`LOWER(${ctx.methodExpr}) = ?`);
+    params.push(normalizeMethod(method));
+  }
+
+  if (provider) {
+    where.push(`LOWER(${ctx.providerExpr}) = ?`);
+    params.push(provider.toLowerCase());
+  }
+
+  if (donationCategory) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("p", ctx.paymentCols, ["donation_category"], null),
+        columnExpr("p", ctx.paymentCols, ["sub_category"], null),
+      ],
+      donationCategory
+    );
+  }
+
+  if (coverageYear && hasColumn(ctx.paymentCols, "coverage_year")) {
+    where.push(`${qc("p", "coverage_year")} = ?`);
+    params.push(coverageYear);
+  }
+
+  if (referenceNo) {
+    addAnyLike(where, params, [ctx.referenceExpr], referenceNo);
+  }
+
+  if (invoiceNumber) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("i", ctx.invoiceCols, ["invoice_number", "invoice_no"], null),
+        columnExpr("p", ctx.paymentCols, ["invoice_number", "invoice_no"], null),
+      ],
+      invoiceNumber
+    );
+  }
+
+  if (receiptNumber) {
+    addAnyLike(
+      where,
+      params,
+      [
+        columnExpr("r", ctx.receiptCols, ["receipt_number", "receipt_no"], null),
+        columnExpr("p", ctx.paymentCols, ["receipt_number", "receipt_no"], null),
+      ],
+      receiptNumber
+    );
+  }
+
+  if (source === "online") {
+    where.push(`
+      (
+        LOWER(${ctx.providerExpr}) = 'stripe'
+        OR LOWER(${ctx.methodExpr}) IN ('card', 'ach')
+      )
+    `);
+  }
+
+  if (source === "manual" || source === "in_person") {
+    where.push(`
+      LOWER(${ctx.methodExpr}) IN
+      ('cash', 'check', 'zelle', 'manual', 'bank_transfer')
+    `);
+  }
+
+  if (dateFrom) {
+    where.push(`DATE(${ctx.paymentDateExpr}) >= ?`);
+    params.push(dateFrom);
+  }
+
+  if (dateTo) {
+    where.push(`DATE(${ctx.paymentDateExpr}) <= ?`);
+    params.push(dateTo);
+  }
+
+  if (amountFrom) {
+    where.push(`${ctx.amountExpr} >= ?`);
+    params.push(Number(amountFrom));
+  }
+
+  if (amountTo) {
+    where.push(`${ctx.amountExpr} <= ?`);
+    params.push(Number(amountTo));
+  }
+
+  return {
+    whereSql: where.length ? `WHERE ${where.join(" AND ")}` : "",
+    params,
+  };
+}
+
+/* -------------------------------------------------------------------------- */
+/* Duplicate Protection / Lookup                                              */
+/* -------------------------------------------------------------------------- */
+
+async function assertReferenceNotDuplicate({
+  method,
+  provider,
+  referenceNo,
+  allowDuplicate,
+}) {
+  if (allowDuplicate || !referenceNo) return;
+
+  if (!["zelle", "check", "bank_transfer", "card", "ach"].includes(method)) {
+    return;
+  }
+
+  const ctx = await queryContext();
+
+  const referenceColumns = [
+    "reference_no",
+    "reference_number",
+    "transaction_reference",
+    "stripe_payment_intent_id",
+    "stripe_charge_id",
+  ].filter((column) => hasColumn(ctx.paymentCols, column));
+
+  if (!referenceColumns.length) return;
+
+  const methodColumns = [
+    "method",
+    "payment_method",
+    "provider",
+    "payment_provider",
+  ].filter((column) => hasColumn(ctx.paymentCols, column));
+
+  const refSql = referenceColumns
+    .map((column) => `${qc("p", column)} = ?`)
+    .join(" OR ");
+
+  const params = referenceColumns.map(() => referenceNo);
+
+  let methodSql = "";
+
+  if (methodColumns.length) {
+    methodSql = `
+      AND (
+        ${methodColumns.map((column) => `${qc("p", column)} = ?`).join(" OR ")}
+      )
+    `;
+
+    for (let i = 0; i < methodColumns.length; i += 1) {
+      params.push(i < 2 ? method : provider);
+    }
+  }
+
+  const [rows] = await pool.query(
+    `
+    SELECT
+      p.id,
+      ${ctx.paymentNumberExpr} AS payment_number,
+      ${ctx.amountExpr} AS amount,
+      ${ctx.statusExpr} AS status,
+      ${columnExpr("p", ctx.paymentCols, ["created_at"], "NULL")} AS created_at
+    FROM tbl_finance_payments p
+    WHERE (${refSql})
+      ${methodSql}
+      AND LOWER(${ctx.statusExpr}) NOT IN
+        ('cancelled', 'canceled', 'void', 'reversed', 'refunded')
+    LIMIT 1
+    `,
+    params
+  );
+
+  if (rows.length) {
+    const existing = rows[0];
+
+    const err = new Error(
+      `Duplicate payment reference blocked. Existing payment: ${existing.payment_number || existing.id}.`
+    );
+
+    err.statusCode = 409;
+    err.duplicate_payment = existing;
+
+    throw err;
+  }
+}
+
+async function loadPaymentById(id) {
+  if (typeof paymentService.getPaymentById === "function") {
+    const payment = await paymentService.getPaymentById(id);
+    if (payment) return payment;
+  }
+
+  const ctx = await queryContext();
+
+  const [rows] = await pool.query(
+    `
+    SELECT
+      ${selectSql(ctx)}
+    ${baseJoinSql(ctx)}
+    WHERE p.id = ?
+    LIMIT 1
+    `,
+    [id]
+  );
+
+  return rows[0] || null;
+}
+
+async function getReceiptIdForPayment(payment = {}) {
+  if (payment.receipt_id) return payment.receipt_id;
+  if (payment.resolved_receipt_id) return payment.resolved_receipt_id;
+
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT id
+      FROM tbl_finance_receipts
+      WHERE payment_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [payment.id]
+    );
+
+    return rows[0]?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+async function getInvoiceIdForPayment(payment = {}) {
+  if (payment.invoice_id) return payment.invoice_id;
+  if (payment.resolved_invoice_id) return payment.resolved_invoice_id;
+
+  try {
+    const [rows] = await pool.query(
+      `
+      SELECT id
+      FROM tbl_finance_invoices
+      WHERE payment_id = ?
+      ORDER BY id DESC
+      LIMIT 1
+      `,
+      [payment.id]
+    );
+
+    return rows[0]?.id || null;
+  } catch {
+    return null;
+  }
+}
+
+function csvEscape(value) {
+  const text = String(value ?? "");
+  if (/[",\n\r]/.test(text)) {
+    return `"${text.replace(/"/g, '""')}"`;
+  }
+
+  return text;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Public Health                                                              */
+/* -------------------------------------------------------------------------- */
+
+router.get("/health/check", (_req, res) => {
+  return res.json({
+    ok: true,
+    module: "financePayments",
+    version: "enterprise",
+    manual_payments_use_payment_service: true,
+    payment_service_create_available:
+      typeof paymentService.createPayment === "function",
+    supported_manual_methods: Array.from(MANUAL_METHODS),
+    supported_online_methods: Array.from(ONLINE_METHODS),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Security                                                                   */
+/* -------------------------------------------------------------------------- */
+
+router.use(authRequired);
+
+router.use(
+  requireRole(
+    "finance",
+    "admin",
+    "super_admin",
+    "reconciliation"
+  )
+);
+
+/* -------------------------------------------------------------------------- */
+/* Metadata                                                                   */
+/* -------------------------------------------------------------------------- */
+
+router.get("/methods", (_req, res) => {
+  return res.json({
+    ok: true,
+    methods: [
+      {
+        value: "cash",
+        label: "Cash",
+        requires_reference: false,
+        creates_invoice: true,
+        creates_receipt: true,
+        service: "paymentService.createPayment",
+      },
+      {
+        value: "check",
+        label: "Check",
+        requires_reference: true,
+        reference_label: "Check Number",
+        creates_invoice: true,
+        creates_receipt: true,
+        service: "paymentService.createPayment",
+      },
+      {
+        value: "zelle",
+        label: "Zelle",
+        requires_reference: true,
+        reference_label: "Zelle Confirmation Number",
+        creates_invoice: true,
+        creates_receipt: true,
+        service: "paymentService.createPayment",
+      },
+      {
+        value: "bank_transfer",
+        label: "Bank Transfer",
+        requires_reference: true,
+        creates_invoice: true,
+        creates_receipt: true,
+        service: "paymentService.createPayment",
+      },
+      {
+        value: "manual",
+        label: "Manual",
+        requires_reference: false,
+        creates_invoice: true,
+        creates_receipt: true,
+        service: "paymentService.createPayment",
+      },
+      {
+        value: "card",
+        label: "Card",
+        requires_checkout: true,
+        provider: "stripe",
+        creates_invoice: true,
+        creates_receipt: true,
+      },
+      {
+        value: "ach",
+        label: "ACH",
+        requires_checkout: true,
+        provider: "stripe",
+        creates_invoice: true,
+        creates_receipt: true,
+      },
+    ],
+    categories: Array.from(PAYMENT_CATEGORIES),
+  });
+});
+
+router.get("/filters", async (_req, res) => {
+  try {
+    const ctx = await queryContext();
 
     const [rows] = await pool.query(
       `
       SELECT
-        p.*,
+        COUNT(*) AS total_records,
+        COALESCE(SUM(${ctx.amountExpr}), 0) AS total_amount,
 
-        r.id AS receipt_id,
-        r.receipt_number,
-        r.email_status,
-        r.emailed_at,
-        r.emailed_to,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'membership' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS membership_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'donation' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS donation_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'pledge' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS pledge_amount,
 
-        i.id AS invoice_id,
-        i.invoice_number,
-        i.balance_due,
-        i.status AS invoice_status
-
-      ${baseJoinSql}
-
-      ${whereSql}
-
-     ORDER BY
-  COALESCE(
-    p.paid_at,
-    p.created_at
-  ) DESC,
-  p.id DESC
-
-      LIMIT ?
-      OFFSET ?
-      `,
-      [
-        ...params,
-        limit,
-        offset,
-      ]
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'cash' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS cash_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'check' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS check_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'zelle' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS zelle_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'card' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS card_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'ach' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS ach_amount
+      FROM tbl_finance_payments p
+      `
     );
 
-    /* =====================================================
-       SUMMARY
-    ===================================================== */
+    return res.json({
+      ok: true,
+      methods: Array.from(PAYMENT_METHODS),
+      manual_methods: Array.from(MANUAL_METHODS),
+      categories: Array.from(PAYMENT_CATEGORIES),
+      summary: rows[0] || {},
+    });
+  } catch (err) {
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to load payment filters.",
+    });
+  }
+});
 
-    const [[summary]] = await pool.query(
+/* -------------------------------------------------------------------------- */
+/* Stats / List / Export                                                      */
+/* -------------------------------------------------------------------------- */
+
+router.get("/stats", async (req, res) => {
+  try {
+    const ctx = await queryContext();
+    const { whereSql, params } = buildWhere(req, ctx);
+
+    const [rows] = await pool.query(
       `
       SELECT
         COUNT(*) AS total_transactions,
+        COALESCE(SUM(${ctx.amountExpr}), 0) AS total_amount,
 
-        COALESCE(SUM(p.amount), 0) AS total_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'membership' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS membership_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'donation' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS donation_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) IN ('school', 'trip') THEN ${ctx.amountExpr} ELSE 0 END), 0) AS program_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.categoryExpr}) = 'pledge' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS pledge_amount,
 
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.category = 'membership'
-                OR p.payment_type = 'membership'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS membership_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'cash' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS cash_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'check' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS check_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'zelle' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS zelle_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'bank_transfer' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS bank_transfer_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'card' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS card_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.methodExpr}) = 'ach' THEN ${ctx.amountExpr} ELSE 0 END), 0) AS ach_amount,
 
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.category = 'donation'
-                OR p.payment_type = 'donation'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS donation_amount,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.statusExpr}) = 'paid' THEN 1 ELSE 0 END), 0) AS paid_count,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.statusExpr}) = 'pending' THEN 1 ELSE 0 END), 0) AS pending_count,
+        COALESCE(SUM(CASE WHEN LOWER(${ctx.statusExpr}) = 'failed' THEN 1 ELSE 0 END), 0) AS failed_count,
 
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.category IN ('school', 'trip')
-                OR p.payment_type IN ('school', 'trip')
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS program_amount,
+        COALESCE(SUM(CASE WHEN r.email_status = 'sent' THEN 1 ELSE 0 END), 0) AS receipt_emails_sent,
+        COALESCE(SUM(CASE WHEN r.email_status = 'failed' THEN 1 ELSE 0 END), 0) AS receipt_emails_failed,
+        COALESCE(SUM(CASE WHEN r.email_status IN ('pending', 'queued') THEN 1 ELSE 0 END), 0) AS receipt_emails_queued
 
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.category = 'pledge'
-                OR p.payment_type = 'pledge'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS pledge_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.method = 'cash'
-                OR p.payment_method = 'cash'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS cash_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.method = 'check'
-                OR p.payment_method = 'check'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS check_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.method = 'zelle'
-                OR p.payment_method = 'zelle'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS zelle_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.method = 'card'
-                OR p.payment_method = 'card'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS card_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.method = 'ach'
-                OR p.payment_method = 'ach'
-              THEN p.amount
-              ELSE 0
-            END
-          ),
-          0
-        ) AS ach_amount,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.status = 'failed'
-                OR p.payment_status = 'failed'
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS failed_count,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN p.status = 'pending'
-                OR p.payment_status = 'pending'
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS pending_count,
-
-        COALESCE(
-          SUM(
-            CASE
-              WHEN r.email_status = 'sent'
-              THEN 1
-              ELSE 0
-            END
-          ),
-          0
-        ) AS emailed_receipts
-
-      ${baseJoinSql}
-
+      ${baseJoinSql(ctx)}
       ${whereSql}
       `,
       params
@@ -3044,371 +1274,254 @@ router.get("/", async (req, res) => {
 
     return res.json({
       ok: true,
-
-      rows,
-
-      pagination: {
-        page,
-        limit,
-        total: Number(countRow.total || 0),
-        pages: Math.max(
-          1,
-          Math.ceil(
-            Number(countRow.total || 0) /
-              limit
-          )
-        ),
-      },
-
-      summary,
-
-      total: Number(countRow.total || 0),
-      page,
-      limit,
-      totalPages: Math.max(
-        1,
-        Math.ceil(
-          Number(countRow.total || 0) /
-            limit
-        )
-      ),
+      summary: rows[0] || {},
     });
   } catch (err) {
-    console.error(
-      "GET /finance/payments error:",
-      err
-    );
+    console.error("GET /finance/payments/stats error:", err);
 
     return res.status(500).json({
       ok: false,
-      error:
-        err.message ||
-        "Failed to load payments.",
+      error: err.message || "Failed to load payment stats.",
     });
   }
 });
-/* =========================================================
-   CREATE PAYMENT
-========================================================= */
 
-router.post("/", async (req, res) => {
-  const conn = await pool.getConnection();
-
+router.get("/campaigns", async (_req, res) => {
   try {
-    await conn.beginTransaction();
-
-    const body = req.body || {};
-
-    const category = clean(
-      body.category ||
-        body.payment_type ||
-        "donation"
-    ).toLowerCase();
-
-    const method = clean(
-      body.method ||
-        body.payment_method ||
-        "manual"
-    ).toLowerCase();
-
-    const provider = clean(
-      body.provider ||
-        body.payment_provider ||
-        method
-    ).toLowerCase();
-
-    const memberId = body.member_id
-      ? Number(body.member_id)
-      : null;
-
-    const member = await getMemberSnapshot(conn, memberId);
-
-    const fullName =
-      member?.full_name ||
-      clean(body.full_name) ||
-      clean(body.name) ||
-      "Guest";
-
-    const email =
-      member?.email ||
-      clean(body.email) ||
-      clean(body.email_snapshot) ||
-      null;
-
-    const phone =
-      member?.phone ||
-      clean(body.phone) ||
-      clean(body.phone_snapshot) ||
-      null;
-
-    const amount = toMoney(
-      body.amount ||
-        body.total_amount ||
-        body.paid_amount
+    const [rows] = await pool.query(
+      `
+      SELECT *
+      FROM tbl_finance_campaigns
+      ORDER BY
+        CASE WHEN status = 'active' THEN 0 ELSE 1 END,
+        created_at DESC,
+        id DESC
+      `
     );
 
-    if (amount <= 0) {
-      throw new Error("Payment amount must be greater than zero.");
-    }
+    return res.json({
+      ok: true,
+      rows,
+    });
+  } catch {
+    return res.json({
+      ok: true,
+      rows: [],
+    });
+  }
+});
 
-    if (category === "membership" && !memberId) {
-      throw new Error("Membership payment requires a member.");
-    }
+router.get("/", async (req, res) => {
+  try {
+    const ctx = await queryContext();
 
-    const paymentNumber = makeCode("PAY");
-    const monthsPaid = toInt(body.months_paid || body.duration_months, 1);
+    const page = toInt(req.query.page, 1);
+    const limit = Math.min(
+      200,
+      toInt(req.query.limit || req.query.pageSize, 25)
+    );
+    const offset = (page - 1) * limit;
 
-    const paymentId = await insertDynamic(
-      conn,
-      "tbl_finance_payments",
-      {
-        payment_number: paymentNumber,
+    const { whereSql, params } = buildWhere(req, ctx);
 
-        member_id: memberId,
-        member_no: member?.member_no || null,
-
-        full_name_snapshot: fullName,
-        email_snapshot: email,
-        phone_snapshot: phone,
-
-        payer_type: memberId ? "member" : "guest",
-
-        category,
-        payment_type: category,
-
-        sub_category: body.sub_category || null,
-        donation_category: body.donation_category || null,
-
-        plan_id: body.plan_id || body.dues_plan_id || null,
-        dues_plan_id: body.dues_plan_id || body.plan_id || null,
-        plan_name: body.plan_name || null,
-
-        amount,
-        total_amount: amount,
-        currency: body.currency || "USD",
-
-        months_paid: category === "membership" ? monthsPaid : null,
-        coverage_year: body.coverage_year || null,
-        coverage_start_month: body.coverage_start_month || null,
-        coverage_end_month: body.coverage_end_month || null,
-        coverage_months_json: body.coverage_months_json || null,
-        coverage_label: body.coverage_label || null,
-
-        method,
-        provider,
-        payment_method: method,
-        payment_provider: provider,
-
-        status: body.status || "paid",
-        payment_status: body.payment_status || body.status || "paid",
-
-        reference_no: body.reference_no || null,
-        description: body.description || category,
-
-        paid_at: new Date(),
-        created_by:
-          req.user?.id ||
-          req.user?.user_id ||
-          null,
-        created_at: new Date(),
-        updated_at: new Date(),
-      }
+    const [countRows] = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      ${baseJoinSql(ctx)}
+      ${whereSql}
+      `,
+      params
     );
 
-    const payment = {
-      id: paymentId,
-      payment_number: paymentNumber,
-
-      member_id: memberId,
-      member_no: member?.member_no || null,
-
-      full_name_snapshot: fullName,
-      email_snapshot: email,
-      phone_snapshot: phone,
-
-      category,
-      sub_category: body.sub_category || null,
-      description: body.description || category,
-
-      amount,
-      method,
-      provider,
-      reference_no: body.reference_no || null,
-
-      months_paid: monthsPaid,
-
-      coverage_year: body.coverage_year || null,
-      coverage_start_month: body.coverage_start_month || null,
-      coverage_end_month: body.coverage_end_month || null,
-      coverage_months_json: body.coverage_months_json || null,
-      coverage_label: body.coverage_label || null,
-    };
-
-    const actorPayload = {
-      ...body,
-      actor_id:
-        req.user?.id ||
-        req.user?.user_id ||
-        null,
-      member_id: memberId,
-    };
-
-    const invoice = await createInvoice(conn, payment, actorPayload);
-
-    payment.invoice_id = invoice.id;
-    payment.invoice_number = invoice.invoice_number;
-
-    const receipt = await createReceipt(
-      conn,
-      payment,
-      invoice,
-      actorPayload
+    const [rows] = await pool.query(
+      `
+      SELECT
+        ${selectSql(ctx)}
+      ${baseJoinSql(ctx)}
+      ${whereSql}
+      ORDER BY
+        ${ctx.paymentDateExpr} DESC,
+        p.id DESC
+      LIMIT ?
+      OFFSET ?
+      `,
+      [...params, limit, offset]
     );
 
-    await updateDynamic(
-      conn,
-      "tbl_finance_payments",
-      {
-        invoice_id: invoice.id,
-        related_invoice_id: invoice.id,
+    const total = Number(countRows[0]?.total || 0);
 
-        receipt_id: receipt.id,
-        related_receipt_id: receipt.id,
-
-        invoice_number: invoice.invoice_number,
-        receipt_number: receipt.receipt_number,
-
-        updated_at: new Date(),
+    return res.json({
+      ok: true,
+      rows,
+      pagination: {
+        page,
+        limit,
+        total,
+        pages: Math.max(1, Math.ceil(total / limit)),
       },
-      "id = ?",
-      [payment.id]
+      total,
+      page,
+      limit,
+      totalPages: Math.max(1, Math.ceil(total / limit)),
+    });
+  } catch (err) {
+    console.error("GET /finance/payments error:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to load payments.",
+    });
+  }
+});
+
+router.get("/export.csv", async (req, res) => {
+  try {
+    const ctx = await queryContext();
+    const { whereSql, params } = buildWhere(req, ctx);
+
+    const [rows] = await pool.query(
+      `
+      SELECT
+        ${selectSql(ctx)}
+      ${baseJoinSql(ctx)}
+      ${whereSql}
+      ORDER BY
+        ${ctx.paymentDateExpr} DESC,
+        p.id DESC
+      LIMIT 5000
+      `,
+      params
     );
 
-    await createLedgerEntry(
-      conn,
-      payment,
-      invoice,
-      receipt,
-      actorPayload
+    const headers = [
+      "Date",
+      "Payment #",
+      "Member #",
+      "Payer",
+      "Email",
+      "Category",
+      "Method",
+      "Amount",
+      "Status",
+      "Reference",
+      "Invoice #",
+      "Receipt #",
+    ];
+
+    const lines = [
+      headers.join(","),
+      ...rows.map((row) => [
+        row.paid_at || row.payment_date || row.created_at || "",
+        row.payment_number || row.payment_no || "",
+        row.member_no || "",
+        row.full_name_snapshot || row.full_name || row.payer_name || "",
+        row.email_snapshot || row.email || row.payer_email || "",
+        row.category || row.payment_type || "",
+        row.method || row.payment_method || "",
+        row.amount || row.paid_amount || row.total_amount || "",
+        row.status || row.payment_status || "",
+        row.reference_no || row.reference_number || row.transaction_reference || "",
+        row.invoice_number || "",
+        row.receipt_number || "",
+      ].map(csvEscape).join(",")),
+    ];
+
+    res.setHeader("Content-Type", "text/csv; charset=utf-8");
+    res.setHeader(
+      "Content-Disposition",
+      `attachment; filename="finance-payments-${Date.now()}.csv"`
     );
 
-    await createCoverage(
-      conn,
-      payment,
-      receipt,
-      actorPayload
-    );
+    return res.send(lines.join("\n"));
+  } catch (err) {
+    console.error("GET /finance/payments/export.csv error:", err);
 
-    await conn.commit();
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to export payments.",
+    });
+  }
+});
 
-    try {
-      if (receipt?.id && email && body.send_receipt_email !== false) {
-        await sendReceiptEmail(receipt.id, { email });
-      }
-    } catch (emailErr) {
-      console.error(
-        "Manual payment receipt email failed:",
-        emailErr
-      );
+/* -------------------------------------------------------------------------- */
+/* Create Manual / Confirmed External Payment                                 */
+/* -------------------------------------------------------------------------- */
+
+async function createFinancePayment(req, res) {
+  try {
+    if (typeof paymentService.createPayment !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "paymentService.createPayment is not available.",
+      });
     }
+
+    const payload = buildPaymentPayload(req);
+
+    await assertReferenceNotDuplicate({
+      method: payload.method,
+      provider: payload.provider,
+      referenceNo: payload.reference_no,
+      allowDuplicate: boolFlag(req.body?.allow_duplicate_reference, false),
+    });
+
+    const result = await paymentService.createPayment(payload);
 
     return res.status(201).json({
       ok: true,
       message: "Payment created successfully.",
-      payment_id: paymentId,
-      payment_number: paymentNumber,
-      invoice,
-      receipt,
+      service: "paymentService.createPayment",
+      payment: result.payment || result,
+      payment_id: result.payment_id || result.payment?.id || null,
+      invoice: result.invoice || null,
+      receipt: result.receipt || null,
+      member: result.member || null,
+      user: result.user || null,
+      receipt_email_sent: Boolean(
+        result.receipt_email_sent ||
+          result.receiptEmailResult?.success ||
+          result.emailResult?.success
+      ),
+      invoice_email_sent: Boolean(
+        result.invoice_email_sent ||
+          result.invoiceEmailResult?.success
+      ),
     });
   } catch (err) {
-    await conn.rollback();
+    console.error("POST /finance/payments error:", {
+      message: err.message,
+      code: err.code,
+      sqlMessage: err.sqlMessage,
+    });
 
-    console.error("POST /finance/payments error:", err);
-
-    return res.status(400).json({
+    return res.status(err.statusCode || 400).json({
       ok: false,
       error: err.message || "Failed to create payment.",
+      requires_checkout: Boolean(err.requires_checkout),
+      duplicate_payment: err.duplicate_payment || null,
+      checkout_hint: err.requires_checkout
+        ? {
+            endpoint: "/api/checkout/create-session",
+            methods: ["card", "ach"],
+          }
+        : null,
     });
-  } finally {
-    conn.release();
   }
-});
+}
 
-/* =========================================================
-   CAMPAIGNS PLACEHOLDER
-========================================================= */
+router.post("/", createFinancePayment);
+router.post("/manual", createFinancePayment);
+router.post("/record", createFinancePayment);
 
-router.get("/campaigns", async (_req, res) => {
-  return res.json({
-    ok: true,
-    rows: [],
-  });
-});
-
-/* =========================================================
-   SINGLE PAYMENT
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Detail                                                                     */
+/* -------------------------------------------------------------------------- */
 
 router.get("/:id", async (req, res) => {
   try {
-    const [[row]] = await pool.query(
-      `
-      SELECT
-        p.*,
+    const payment = await loadPaymentById(req.params.id);
 
-        r.id AS receipt_id,
-        r.receipt_number,
-        r.email_status,
-        r.emailed_at,
-        r.emailed_to,
-
-        i.id AS invoice_id,
-        i.invoice_number,
-        i.balance_due,
-        i.status AS invoice_status,
-
-        m.full_name,
-        m.member_no,
-        m.email,
-        m.phone
-
-      FROM tbl_finance_payments p
-
-      LEFT JOIN (
-        SELECT
-          payment_id,
-          MAX(id) AS receipt_id
-        FROM tbl_finance_receipts
-        GROUP BY payment_id
-      ) latest_r
-        ON latest_r.payment_id = p.id
-
-      LEFT JOIN tbl_finance_receipts r
-        ON r.id = latest_r.receipt_id
-
-      LEFT JOIN (
-        SELECT
-          payment_id,
-          MAX(id) AS invoice_id
-        FROM tbl_finance_invoices
-        GROUP BY payment_id
-      ) latest_i
-        ON latest_i.payment_id = p.id
-
-      LEFT JOIN tbl_finance_invoices i
-        ON i.id = latest_i.invoice_id
-
-      LEFT JOIN tbl_members m
-        ON m.id = p.member_id
-
-      WHERE p.id = ?
-
-      LIMIT 1
-      `,
-      [req.params.id]
-    );
-
-    if (!row) {
+    if (!payment) {
       return res.status(404).json({
         ok: false,
         error: "Payment not found.",
@@ -3418,71 +1531,311 @@ router.get("/:id", async (req, res) => {
     let coverage = [];
 
     try {
-      const [coverageRows] = await pool.query(
-        `
-        SELECT
-          coverage_year,
-          month_number,
-          month_name,
-          status,
-          payment_number
-        FROM tbl_member_membership_coverage
-        WHERE payment_number = ?
-        ORDER BY coverage_year, month_number
-        `,
-        [row.payment_number]
-      );
+      const coverageCols = await tableColumns(TABLES.coverage);
 
-      coverage = coverageRows || [];
-    } catch (err) {
-      console.warn(
-        "Coverage lookup skipped:",
-        err.message
-      );
+      if (
+        hasColumn(coverageCols, "payment_number") ||
+        hasColumn(coverageCols, "payment_id")
+      ) {
+        const where = [];
+        const params = [];
+
+        if (hasColumn(coverageCols, "payment_number")) {
+          where.push("payment_number = ?");
+          params.push(payment.payment_number || payment.payment_no || "");
+        }
+
+        if (hasColumn(coverageCols, "payment_id")) {
+          where.push("payment_id = ?");
+          params.push(payment.id);
+        }
+
+        const [coverageRows] = await pool.query(
+          `
+          SELECT *
+          FROM tbl_member_membership_coverage
+          WHERE ${where.join(" OR ")}
+          ORDER BY
+            coverage_year,
+            month_number,
+            id
+          `,
+          params
+        );
+
+        coverage = coverageRows || [];
+      }
+    } catch {
+      coverage = [];
     }
 
     return res.json({
       ok: true,
-
-      payment: row,
-
-      receipt: row.receipt_id
+      payment,
+      receipt: payment.receipt_number
         ? {
-            id: row.receipt_id,
-            receipt_number: row.receipt_number,
-            email_status: row.email_status,
-            emailed_at: row.emailed_at,
-            emailed_to: row.emailed_to,
+            id: payment.receipt_id || null,
+            receipt_number: payment.receipt_number,
           }
         : null,
-
-      invoice: row.invoice_id
+      invoice: payment.invoice_number
         ? {
-            id: row.invoice_id,
-            invoice_number: row.invoice_number,
-            balance_due: row.balance_due,
-            status: row.invoice_status,
+            id: payment.invoice_id || null,
+            invoice_number: payment.invoice_number,
           }
         : null,
-
       coverage,
     });
   } catch (err) {
-    console.error(
-      "GET /finance/payments/:id error:",
-      err
-    );
+    console.error("GET /finance/payments/:id error:", err);
 
     return res.status(500).json({
       ok: false,
-      error:
-        err.message ||
-        "Failed to load payment.",
+      error: err.message || "Failed to load payment.",
     });
   }
 });
-/* =========================================================
-   EXPORTS
-========================================================= */
+
+/* -------------------------------------------------------------------------- */
+/* Email Actions                                                              */
+/* -------------------------------------------------------------------------- */
+
+router.post("/:id/receipt/resend", async (req, res) => {
+  try {
+    const payment = await loadPaymentById(req.params.id);
+
+    if (!payment) {
+      return res.status(404).json({
+        ok: false,
+        error: "Payment not found.",
+      });
+    }
+
+    const receiptId = await getReceiptIdForPayment(payment);
+
+    if (!receiptId) {
+      return res.status(404).json({
+        ok: false,
+        error: "Receipt not found for this payment.",
+      });
+    }
+
+    if (typeof receiptEmailService.sendReceiptEmail !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Receipt email service is not available.",
+      });
+    }
+
+    const email =
+      clean(req.body?.email) ||
+      payment.email_snapshot ||
+      payment.email ||
+      payment.payer_email ||
+      null;
+
+    if (!email) {
+      return res.status(400).json({
+        ok: false,
+        error: "Receipt email address is required.",
+      });
+    }
+
+    const result = await receiptEmailService.sendReceiptEmail(receiptId, {
+      email,
+      to: email,
+      resent_by: actorId(req),
+      source: "financePayments",
+    });
+
+    return res.json({
+      ok: true,
+      message: "Receipt email sent.",
+      result,
+    });
+  } catch (err) {
+    console.error("POST /finance/payments/:id/receipt/resend error:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to resend receipt.",
+    });
+  }
+});
+
+router.post("/:id/invoice/resend", async (req, res) => {
+  try {
+    const payment = await loadPaymentById(req.params.id);
+
+    if (!payment) {
+      return res.status(404).json({
+        ok: false,
+        error: "Payment not found.",
+      });
+    }
+
+    const invoiceId = await getInvoiceIdForPayment(payment);
+
+    if (!invoiceId) {
+      return res.status(404).json({
+        ok: false,
+        error: "Invoice not found for this payment.",
+      });
+    }
+
+    if (typeof invoiceEmailService.sendInvoiceEmail !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Invoice email service is not available.",
+      });
+    }
+
+    const email =
+      clean(req.body?.email) ||
+      payment.email_snapshot ||
+      payment.email ||
+      payment.payer_email ||
+      null;
+
+    if (!email) {
+      return res.status(400).json({
+        ok: false,
+        error: "Invoice email address is required.",
+      });
+    }
+
+    const result = await invoiceEmailService.sendInvoiceEmail(invoiceId, {
+      email,
+      to: email,
+      resent_by: actorId(req),
+      source: "financePayments",
+    });
+
+    return res.json({
+      ok: true,
+      message: "Invoice email sent.",
+      result,
+    });
+  } catch (err) {
+    console.error("POST /finance/payments/:id/invoice/resend error:", err);
+
+    return res.status(500).json({
+      ok: false,
+      error: err.message || "Failed to resend invoice.",
+    });
+  }
+});
+
+/* -------------------------------------------------------------------------- */
+/* Accounting Actions                                                         */
+/* -------------------------------------------------------------------------- */
+
+router.post("/:id/reconcile", async (req, res) => {
+  try {
+    if (typeof paymentService.reconcilePayment !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Payment reconciliation service is not available.",
+      });
+    }
+
+    const payment = await paymentService.reconcilePayment({
+      payment_id: req.params.id,
+      reconciliation_batch: req.body?.reconciliation_batch || null,
+      reconciled_by: actorId(req),
+    });
+
+    return res.json({
+      ok: true,
+      payment,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to reconcile payment.",
+    });
+  }
+});
+
+router.post("/:id/unreconcile", async (req, res) => {
+  try {
+    if (typeof paymentService.unreconcilePayment !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Payment unreconciliation service is not available.",
+      });
+    }
+
+    const payment = await paymentService.unreconcilePayment({
+      payment_id: req.params.id,
+      unreconciled_by: actorId(req),
+    });
+
+    return res.json({
+      ok: true,
+      payment,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to unreconcile payment.",
+    });
+  }
+});
+
+router.post("/:id/refund", async (req, res) => {
+  try {
+    if (typeof paymentService.refundPayment !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Payment refund service is not available.",
+      });
+    }
+
+    const payment = await paymentService.refundPayment({
+      payment_id: req.params.id,
+      amount: req.body?.amount || null,
+      reason: req.body?.reason || req.body?.notes || null,
+      refunded_by: actorId(req),
+    });
+
+    return res.json({
+      ok: true,
+      payment,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to refund payment.",
+    });
+  }
+});
+
+router.post("/:id/reverse", async (req, res) => {
+  try {
+    if (typeof paymentService.reversePayment !== "function") {
+      return res.status(501).json({
+        ok: false,
+        error: "Payment reversal service is not available.",
+      });
+    }
+
+    const payment = await paymentService.reversePayment({
+      payment_id: req.params.id,
+      reason: req.body?.reason || req.body?.notes || null,
+      reversed_by: actorId(req),
+    });
+
+    return res.json({
+      ok: true,
+      payment,
+    });
+  } catch (err) {
+    return res.status(400).json({
+      ok: false,
+      error: err.message || "Failed to reverse payment.",
+    });
+  }
+});
 
 module.exports = router;

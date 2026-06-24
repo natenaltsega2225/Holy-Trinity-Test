@@ -1,709 +1,422 @@
 // frontend/src/components/FinanceDashboard/pages/FinanceAuditLogs.jsx
 
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  ShieldCheck,
-  Search,
-  RefreshCcw,
-  Download,
-  Calendar,
-  User,
-  FileText,
   AlertTriangle,
-  Eye,
+  Download,
+  RefreshCcw,
+  Search,
+  ShieldCheck,
 } from "lucide-react";
 
-import FinanceBadge from "../components/../../Shared/FinanceBadge";
+// import "../../../styles/shared-payment-components.css";
+// import "../../../styles/finance-dashboard.css";
+import "../../../styles/finance-enterprise.css";
+const PAGE_SIZE = 25;
 
-import "../../../styles/shared-payment-components.css";
-// import "../finance-dashboard.css";
+function readAuthToken() {
+  const tokenKeys = [
+    "ht_token",
+    "access_token",
+    "accessToken",
+    "auth_token",
+    "authToken",
+    "token",
+    "jwt",
+    "jwtToken",
+    "id_token",
+    "holy_token",
+    "holy_access_token",
+  ];
 
-function pretty(value) {
+  const objectKeys = [
+    "ht_auth",
+    "auth",
+    "holy_auth",
+    "ht_user",
+    "user",
+    "authUser",
+    "currentUser",
+  ];
 
-  return String(
-    value || ""
-  )
-    .replaceAll("_", " ")
-    .replace(/\b\w/g, (m) =>
-      m.toUpperCase()
-    );
+  const stores = [window.localStorage, window.sessionStorage].filter(Boolean);
+
+  for (const store of stores) {
+    for (const key of tokenKeys) {
+      const value = store.getItem(key);
+      if (value && !["undefined", "null"].includes(value)) {
+        return String(value).replace(/^Bearer\s+/i, "");
+      }
+    }
+
+    for (const key of objectKeys) {
+      const raw = store.getItem(key);
+      if (!raw) continue;
+
+      try {
+        const value = JSON.parse(raw);
+        const token =
+          value?.accessToken ||
+          value?.access_token ||
+          value?.token ||
+          value?.jwt ||
+          value?.auth?.token;
+
+        if (token) {
+          return String(token).replace(/^Bearer\s+/i, "");
+        }
+      } catch (_err) {}
+    }
+  }
+
+  return "";
+}
+
+async function apiFetch(path, options = {}) {
+  const token = readAuthToken();
+  const headers = {
+    "Content-Type": "application/json",
+    ...(options.headers || {}),
+  };
+
+  if (token) {
+    headers.Authorization = `Bearer ${token}`;
+  }
+
+  const response = await fetch(path, {
+    credentials: "include",
+    ...options,
+    headers,
+  });
+
+  const text = await response.text();
+  let data = {};
+
+  try {
+    data = text ? JSON.parse(text) : {};
+  } catch (_err) {
+    data = { raw: text };
+  }
+
+  if (response.status === 401) {
+    throw new Error("Your finance session expired. Please sign in again.");
+  }
+
+  if (!response.ok || data.ok === false) {
+    throw new Error(data.error || data.message || `Request failed (${response.status}).`);
+  }
+
+  return data;
 }
 
 function formatDate(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "--";
+  return date.toLocaleString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
-  if (!value)
-    return "--";
+function pretty(value) {
+  const text = String(value || "--").replaceAll("_", " ");
+  return text.replace(/\b\w/g, (c) => c.toUpperCase());
+}
 
-  return new Date(
-    value
-  ).toLocaleString();
+function normalizeRows(data) {
+  return data.rows || data.audit_logs || data.logs || data.data || [];
+}
+
+function statusClass(value) {
+  const text = String(value || "").toLowerCase();
+  if (["success", "completed", "recorded", "info"].includes(text)) return "success";
+  if (["warning", "pending", "review"].includes(text)) return "warning";
+  if (["error", "failed", "danger", "critical"].includes(text)) return "danger";
+  return "neutral";
+}
+
+function exportCsv(rows) {
+  const headers = [
+    "Created At",
+    "Actor",
+    "Email",
+    "Action",
+    "Entity",
+    "Entity ID",
+    "Reference",
+    "IP Address",
+    "Description",
+  ];
+
+  const body = rows.map((row) => [
+    formatDate(row.created_at),
+    row.actor_name || "--",
+    row.actor_email || "--",
+    row.action || "--",
+    row.entity || row.entity_type || "--",
+    row.entity_id || "--",
+    row.reference_no || "--",
+    row.ip_address || "--",
+    row.description || "--",
+  ]);
+
+  const csv = [headers, ...body]
+    .map((line) =>
+      line
+        .map((cell) => `"${String(cell ?? "").replaceAll('"', '""')}"`)
+        .join(",")
+    )
+    .join("\n");
+
+  const blob = new Blob([csv], { type: "text/csv;charset=utf-8" });
+  const url = URL.createObjectURL(blob);
+  const link = document.createElement("a");
+  link.href = url;
+  link.download = `finance-audit-${new Date().toISOString().slice(0, 10)}.csv`;
+  link.click();
+  URL.revokeObjectURL(url);
 }
 
 export default function FinanceAuditLogs() {
+  const [rows, setRows] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+  const [search, setSearch] = useState("");
+  const [action, setAction] = useState("");
+  const [entity, setEntity] = useState("");
+  const [page, setPage] = useState(1);
+  const [total, setTotal] = useState(0);
 
-  const [loading, setLoading] =
-    useState(false);
+  const stats = useMemo(() => {
+    const dangerous = rows.filter((row) =>
+      ["error", "failed", "danger", "critical"].includes(
+        String(row.severity || row.status || "").toLowerCase()
+      )
+    ).length;
 
-  const [rows, setRows] =
-    useState([]);
+    return {
+      records: total || rows.length,
+      users: new Set(rows.map((row) => row.actor_email).filter(Boolean)).size,
+      entities: new Set(rows.map((row) => row.entity || row.entity_type).filter(Boolean)).size,
+      alerts: dangerous,
+    };
+  }, [rows, total]);
 
-  const [stats, setStats] =
-    useState(null);
-
-  const [selected, setSelected] =
-    useState(null);
-
-  const [filters, setFilters] =
-    useState({
-      search: "",
-      actor_id: "",
-      action_type: "",
-      entity_type: "",
-      date_from: "",
-      date_to: "",
-    });
-
-  async function loadData() {
+  async function load() {
+    setLoading(true);
+    setError("");
 
     try {
+      const params = new URLSearchParams({
+        page: String(page),
+        pageSize: String(PAGE_SIZE),
+      });
 
-      setLoading(true);
+      if (search.trim()) params.set("search", search.trim());
+      if (action) params.set("action", action);
+      if (entity) params.set("entity", entity);
 
-      const params =
-        new URLSearchParams();
+      const data = await apiFetch(`/api/finance/audit-logs?${params.toString()}`);
 
-      Object.entries(filters)
-        .forEach(([k, v]) => {
-
-          if (
-            v !== undefined &&
-            v !== null &&
-            String(v).trim() !== ""
-          ) {
-
-            params.append(k, v);
-          }
-        });
-
-      const res =
-        await fetch(
-          `/api/finance/audit-logs?${params.toString()}`,
-          {
-            credentials:
-              "include",
-          }
-        );
-
-      const data =
-        await res.json();
-
-      if (!res.ok) {
-
-        throw new Error(
-          data.error ||
-          "Failed to load audit logs."
-        );
-      }
-
-      setRows(
-        data.rows || []
-      );
-
-      setStats(
-        data.stats || null
-      );
-
+      setRows(normalizeRows(data));
+      setTotal(Number(data.total || normalizeRows(data).length || 0));
     } catch (err) {
-
-      console.error(err);
-
+      setError(err.message || "Failed to load finance audit logs.");
+      setRows([]);
+      setTotal(0);
     } finally {
-
       setLoading(false);
     }
   }
 
   useEffect(() => {
-    loadData();
-  }, []);
+    load();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [page]);
 
-  const totals =
-    useMemo(() => {
-
-      return {
-
-        total:
-          rows.length,
-
-        reversals:
-          rows.filter(
-            (r) =>
-              String(
-                r.action_type || ""
-              ).includes(
-                "reverse"
-              )
-          ).length,
-
-        exports:
-          rows.filter(
-            (r) =>
-              String(
-                r.action_type || ""
-              ).includes(
-                "export"
-              )
-          ).length,
-
-        reconciliations:
-          rows.filter(
-            (r) =>
-              String(
-                r.action_type || ""
-              ).includes(
-                "reconcile"
-              )
-          ).length,
-      };
-
-    }, [rows]);
+  function submitSearch(e) {
+    e.preventDefault();
+    setPage(1);
+    load();
+  }
 
   return (
-    <div className="finance-enterprise-page">
-
-      <div className="finance-page-header">
-
+    <div className="finance-page">
+      <section className="finance-hero">
         <div>
-
-          <h1>
-            Finance Audit Logs
-          </h1>
-
+          <p className="finance-eyebrow">Finance Audit</p>
+          <h1>Audit Logs</h1>
           <p>
-            Enterprise-grade
-            finance audit,
-            accountability,
-            reconciliation,
-            adjustments,
-            exports,
-            and accounting
-            activity tracking.
+            Review finance activity, security events, document actions, payment activity,
+            and system changes from one controlled audit view.
           </p>
-
         </div>
 
-        <div className="finance-header-actions">
-
-          <button
-            className="finance-btn finance-btn-secondary"
-            onClick={loadData}
-          >
+        <div className="finance-actions">
+          <button type="button" className="finance-btn" onClick={load} disabled={loading}>
             <RefreshCcw size={16} />
             Refresh
           </button>
-
           <button
-            className="finance-btn finance-btn-primary"
-            onClick={() =>
-              window.open(
-                "/api/finance/audit-logs/export",
-                "_blank"
-              )
-            }
+            type="button"
+            className="finance-btn"
+            onClick={() => exportCsv(rows)}
+            disabled={!rows.length}
           >
             <Download size={16} />
-            Export
+            Export CSV
           </button>
-
         </div>
+      </section>
 
-      </div>
-
-      <div className="finance-summary-grid">
-
-        <div className="finance-summary-card finance-summary-card-primary">
-
-          <div className="finance-summary-card-top">
-            <ShieldCheck size={18} />
-            <span>
-              Audit Events
-            </span>
-          </div>
-
-          <strong>
-            {totals.total}
-          </strong>
-
+      {error ? (
+        <div className="finance-alert finance-alert-danger">
+          <AlertTriangle size={16} />
+          {error}
         </div>
+      ) : null}
 
-        <div className="finance-summary-card finance-summary-card-warning">
-
-          <div className="finance-summary-card-top">
-            <AlertTriangle size={18} />
-            <span>
-              Reversals
-            </span>
-          </div>
-
-          <strong>
-            {totals.reversals}
-          </strong>
-
-        </div>
-
-        <div className="finance-summary-card finance-summary-card-success">
-
-          <div className="finance-summary-card-top">
-            <Download size={18} />
-            <span>
-              Exports
-            </span>
-          </div>
-
-          <strong>
-            {totals.exports}
-          </strong>
-
-        </div>
-
+      <section className="finance-summary-grid">
         <div className="finance-summary-card">
-
-          <div className="finance-summary-card-top">
-            <FileText size={18} />
-            <span>
-              Reconciliations
-            </span>
-          </div>
-
-          <strong>
-            {totals.reconciliations}
-          </strong>
-
+          <span>Records</span>
+          <strong>{stats.records}</strong>
+          <small>Total matched logs</small>
         </div>
-
-      </div>
-
-      <div className="finance-section-card">
-
-        <div className="finance-section-title">
-
-          <Search size={16} />
-
-          <span>
-            Audit Filters
-          </span>
-
+        <div className="finance-summary-card">
+          <span>Actors</span>
+          <strong>{stats.users}</strong>
+          <small>Visible users</small>
         </div>
-
-        <div className="finance-grid finance-grid-5">
-
-          <div className="finance-field">
-
-            <label>
-              Search
-            </label>
-
-            <input
-              value={
-                filters.search
-              }
-              onChange={(e) =>
-                setFilters(
-                  (prev) => ({
-                    ...prev,
-                    search:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-
-          </div>
-
-          <div className="finance-field">
-
-            <label>
-              Actor ID
-            </label>
-
-            <input
-              value={
-                filters.actor_id
-              }
-              onChange={(e) =>
-                setFilters(
-                  (prev) => ({
-                    ...prev,
-                    actor_id:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-
-          </div>
-
-          <div className="finance-field">
-
-            <label>
-              Action
-            </label>
-
-            <input
-              value={
-                filters.action_type
-              }
-              onChange={(e) =>
-                setFilters(
-                  (prev) => ({
-                    ...prev,
-                    action_type:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-
-          </div>
-
-          <div className="finance-field">
-
-            <label>
-              Entity
-            </label>
-
-            <input
-              value={
-                filters.entity_type
-              }
-              onChange={(e) =>
-                setFilters(
-                  (prev) => ({
-                    ...prev,
-                    entity_type:
-                      e.target.value,
-                  })
-                )
-              }
-            />
-
-          </div>
-
-          <div className="finance-field finance-field-end">
-
-            <button
-              className="finance-btn finance-btn-primary"
-              onClick={loadData}
-            >
-              Apply
-            </button>
-
-          </div>
-
+        <div className="finance-summary-card">
+          <span>Entities</span>
+          <strong>{stats.entities}</strong>
+          <small>Finance areas touched</small>
         </div>
+        <div className="finance-summary-card">
+          <span>Alerts</span>
+          <strong>{stats.alerts}</strong>
+          <small>Warning or failed events</small>
+        </div>
+      </section>
 
-      </div>
+      <section className="finance-panel">
+        <form className="finance-filter-bar" onSubmit={submitSearch}>
+          <label className="finance-search-field">
+            <Search size={18} />
+            <input
+              value={search}
+              onChange={(e) => setSearch(e.target.value)}
+              placeholder="Search actor, email, action, entity, IP, reference..."
+            />
+          </label>
 
-      <div className="finance-table-card">
+          <select value={action} onChange={(e) => setAction(e.target.value)}>
+            <option value="">All Actions</option>
+            <option value="login_success">Login Success</option>
+            <option value="member_updated">Member Updated</option>
+            <option value="invoice_created">Invoice Created</option>
+            <option value="invoice_emailed">Invoice Emailed</option>
+            <option value="payment_created">Payment Created</option>
+            <option value="receipt_created">Receipt Created</option>
+            <option value="expense_created">Expense Created</option>
+          </select>
+
+          <select value={entity} onChange={(e) => setEntity(e.target.value)}>
+            <option value="">All Entities</option>
+            <option value="auth">Auth</option>
+            <option value="member">Member</option>
+            <option value="invoice">Invoice</option>
+            <option value="payment">Payment</option>
+            <option value="receipt">Receipt</option>
+            <option value="expense">Expense</option>
+            <option value="settings">Settings</option>
+          </select>
+
+          {/* <button type="submit" className="finance-btn finance-btn-primary">
+            Search
+          </button> */}
+          
+        </form>
 
         <div className="finance-table-wrap">
-
           <table className="finance-table">
-
             <thead>
-
               <tr>
-
-                <th>
-                  Date
-                </th>
-
-                <th>
-                  Actor
-                </th>
-
-                <th>
-                  Action
-                </th>
-
-                <th>
-                  Entity
-                </th>
-
-                <th>
-                  Entity ID
-                </th>
-
-                <th>
-                  IP
-                </th>
-
-                <th>
-                  Actions
-                </th>
-
+                <th>Created</th>
+                <th>Actor</th>
+                <th>Action</th>
+                <th>Entity</th>
+                <th>Reference</th>
+                <th>IP</th>
+                <th>Status</th>
+                <th>Description</th>
               </tr>
-
             </thead>
-
             <tbody>
+              {rows.map((row) => (
+                <tr key={row.id}>
+                  <td>{formatDate(row.created_at)}</td>
+                  <td>
+                    <strong>{row.actor_name || "--"}</strong>
+                    <small>{row.actor_email || "--"}</small>
+                  </td>
+                  <td>{pretty(row.action || row.event_type)}</td>
+                  <td>
+                    <strong>{pretty(row.entity || row.entity_type)}</strong>
+                    <small>{row.entity_id || "--"}</small>
+                  </td>
+                  <td>{row.reference_no || "--"}</td>
+                  <td>{row.ip_address || "--"}</td>
+                  <td>
+                    <span className={`finance-badge finance-badge-${statusClass(row.severity || row.status)}`}>
+                      {pretty(row.severity || row.status || "recorded")}
+                    </span>
+                  </td>
+                  <td>{row.description || "--"}</td>
+                </tr>
+              ))}
 
-              {loading && (
+              {!rows.length ? (
                 <tr>
-                  <td
-                    colSpan="7"
-                    className="finance-empty-cell"
-                  >
-                    Loading...
+                  <td colSpan="8">
+                    <div className="finance-empty-state">
+                      <ShieldCheck size={28} />
+                      <strong>{loading ? "Loading audit logs..." : "No audit activity found."}</strong>
+                      <span>Audit records will appear here after finance activity is recorded.</span>
+                    </div>
                   </td>
                 </tr>
-              )}
-
-              {!loading &&
-                rows.length === 0 && (
-                  <tr>
-                    <td
-                      colSpan="7"
-                      className="finance-empty-cell"
-                    >
-                      No audit logs found.
-                    </td>
-                  </tr>
-                )}
-
-              {!loading &&
-                rows.map(
-                  (row) => (
-
-                    <tr
-                      key={
-                        row.id
-                      }
-                    >
-
-                      <td>
-                        {formatDate(
-                          row.created_at
-                        )}
-                      </td>
-
-                      <td>
-
-                        <div className="finance-inline-icon">
-
-                          <User size={14} />
-
-                          <span>
-                            {row.actor_id ||
-                              "--"}
-                          </span>
-
-                        </div>
-
-                      </td>
-
-                      <td>
-
-                        <FinanceBadge
-                          label={pretty(
-                            row.action_type
-                          )}
-                          type="primary"
-                        />
-
-                      </td>
-
-                      <td>
-                        {pretty(
-                          row.entity_type
-                        )}
-                      </td>
-
-                      <td>
-                        {row.entity_id ||
-                          "--"}
-                      </td>
-
-                      <td>
-                        {row.ip_address ||
-                          "--"}
-                      </td>
-
-                      <td>
-
-                        <button
-                          className="finance-btn finance-btn-xs"
-                          onClick={() =>
-                            setSelected(
-                              row
-                            )
-                          }
-                        >
-                          <Eye size={14} />
-                        </button>
-
-                      </td>
-
-                    </tr>
-                  )
-                )}
-
+              ) : null}
             </tbody>
-
           </table>
-
         </div>
 
-      </div>
-
-      {selected && (
-
-        <div className="finance-drawer-overlay">
-
-          <div className="finance-drawer finance-drawer-lg">
-
-            <div className="finance-drawer-header">
-
-              <div>
-
-                <h2>
-                  Audit Event
-                </h2>
-
-                <p>
-                  Enterprise
-                  audit activity
-                  details and
-                  accounting traceability.
-                </p>
-
-              </div>
-
-              <button
-                className="finance-icon-btn"
-                onClick={() =>
-                  setSelected(
-                    null
-                  )
-                }
-              >
-                ×
-              </button>
-
-            </div>
-
-            <div className="finance-drawer-body">
-
-              <div className="finance-detail-grid">
-
-                <div className="finance-detail-card">
-
-                  <div className="finance-detail-list">
-
-                    <div className="finance-detail-row">
-                      <span>
-                        Action
-                      </span>
-
-                      <strong>
-                        {pretty(
-                          selected.action_type
-                        )}
-                      </strong>
-                    </div>
-
-                    <div className="finance-detail-row">
-                      <span>
-                        Entity
-                      </span>
-
-                      <strong>
-                        {pretty(
-                          selected.entity_type
-                        )}
-                      </strong>
-                    </div>
-
-                    <div className="finance-detail-row">
-                      <span>
-                        Entity ID
-                      </span>
-
-                      <strong>
-                        {selected.entity_id}
-                      </strong>
-                    </div>
-
-                    <div className="finance-detail-row">
-                      <span>
-                        Actor
-                      </span>
-
-                      <strong>
-                        {selected.actor_id}
-                      </strong>
-                    </div>
-
-                    <div className="finance-detail-row">
-                      <span>
-                        IP Address
-                      </span>
-
-                      <strong>
-                        {selected.ip_address ||
-                          "--"}
-                      </strong>
-                    </div>
-
-                    <div className="finance-detail-row">
-                      <span>
-                        Created
-                      </span>
-
-                      <strong>
-                        {formatDate(
-                          selected.created_at
-                        )}
-                      </strong>
-                    </div>
-
-                  </div>
-
-                </div>
-
-              </div>
-
-              <div className="finance-detail-card">
-
-                <div className="finance-detail-card-title">
-                  <FileText size={16} />
-                  <span>
-                    Metadata
-                  </span>
-                </div>
-
-                <pre className="finance-json-view">
-{JSON.stringify(
-  selected.metadata_json || {},
-  null,
-  2
-)}
-                </pre>
-
-              </div>
-
-            </div>
-
-          </div>
-
+        <div className="finance-pagination-row">
+          <button
+            type="button"
+            className="finance-btn"
+            disabled={page <= 1 || loading}
+            onClick={() => setPage((value) => Math.max(1, value - 1))}
+          >
+            Previous
+          </button>
+          <span>
+            Page {page} of {Math.max(1, Math.ceil((total || rows.length || 1) / PAGE_SIZE))}
+          </span>
+          <button
+            type="button"
+            className="finance-btn"
+            disabled={loading || page >= Math.ceil((total || rows.length || 1) / PAGE_SIZE)}
+            onClick={() => setPage((value) => value + 1)}
+          >
+            Next
+          </button>
         </div>
-      )}
-
+      </section>
     </div>
   );
 }

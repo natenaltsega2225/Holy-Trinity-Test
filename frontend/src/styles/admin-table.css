@@ -1,0 +1,254 @@
+/* ==========================================================
+   ENTERPRISE ADMIN TABLE SYSTEM
+========================================================== */
+
+.admin-table-card{
+  background:#fff;
+  border:1px solid #dbe5f0;
+  border-radius:20px;
+  overflow:hidden;
+  box-shadow:0 6px 20px rgba(15,23,42,.05);
+}
+
+.admin-table-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:16px;
+  padding:18px 20px;
+  border-bottom:1px solid #e2e8f0;
+}
+
+.admin-table-wrap{
+  width:100%;
+  overflow-x:auto;
+  -webkit-overflow-scrolling:touch;
+}
+
+.admin-table{
+  width:100%;
+  border-collapse:collapse;
+  min-width:1100px;
+}
+
+.admin-table thead th{
+  background:#f8fafc;
+  color:#64748b;
+  font-size:12px;
+  font-weight:800;
+  letter-spacing:.08em;
+  text-transform:uppercase;
+  padding:14px 16px;
+  border-bottom:1px solid #e2e8f0;
+  text-align:left;
+  white-space:nowrap;
+}
+
+.admin-table tbody td{
+  padding:12px 16px;
+  border-bottom:1px solid #eef2f7;
+  color:#0f172a;
+  font-size:14px;
+  vertical-align:middle;
+}
+
+.admin-table tbody tr:hover{
+  background:#f8fbff;
+}
+
+.admin-table tbody tr:last-child td{
+  border-bottom:none;
+}
+
+/* ==========================================
+   MEMBER CELLS
+========================================== */
+
+.admin-member-id{
+  font-weight:700;
+  color:#123a74;
+  font-size:13px;
+}
+
+.admin-member-name{
+  margin-top:3px;
+  color:#64748b;
+  font-size:13px;
+}
+
+/* ==========================================
+   STATUS BADGES
+========================================== */
+
+.admin-badge{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  padding:6px 12px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+}
+
+.admin-badge-member{
+  background:#dbeafe;
+  color:#0369a1;
+}
+
+.admin-badge-finance{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.admin-badge-admin{
+  background:#ede9fe;
+  color:#7c3aed;
+}
+
+.admin-badge-superadmin{
+  background:#fee2e2;
+  color:#dc2626;
+}
+
+/* ==========================================
+   ACTIVE STATUS
+========================================== */
+
+.admin-status-pill{
+  display:inline-flex;
+  align-items:center;
+  justify-content:center;
+  min-width:48px;
+  padding:4px 10px;
+  border-radius:999px;
+  font-size:12px;
+  font-weight:700;
+}
+
+.admin-status-pill.active{
+  background:#dcfce7;
+  color:#15803d;
+}
+
+.admin-status-pill.inactive{
+  background:#fee2e2;
+  color:#dc2626;
+}
+
+/* ==========================================
+   ACTION MENU
+========================================== */
+
+.admin-table-actions{
+  display:flex;
+  justify-content:flex-end;
+}
+
+.admin-kebab-btn{
+  width:38px;
+  height:38px;
+  border:1px solid #dbe5f0;
+  background:#fff;
+  border-radius:12px;
+  cursor:pointer;
+  transition:.2s;
+}
+
+.admin-kebab-btn:hover{
+  background:#f8fafc;
+}
+
+.admin-kebab-menu{
+  position:absolute;
+  right:0;
+  margin-top:8px;
+  min-width:180px;
+  background:#fff;
+  border:1px solid #dbe5f0;
+  border-radius:14px;
+  box-shadow:0 12px 30px rgba(15,23,42,.12);
+  overflow:hidden;
+  z-index:100;
+}
+
+.admin-kebab-item{
+  width:100%;
+  padding:12px 16px;
+  border:none;
+  background:#fff;
+  text-align:left;
+  cursor:pointer;
+  font-size:14px;
+}
+
+.admin-kebab-item:hover{
+  background:#f8fafc;
+}
+
+.admin-kebab-item-danger{
+  color:#dc2626;
+}
+
+/* ==========================================
+   EMPTY STATE
+========================================== */
+
+.admin-empty-cell{
+  text-align:center;
+  padding:50px !important;
+  color:#64748b;
+  font-weight:600;
+}
+
+/* ==========================================
+   PAGINATION
+========================================== */
+
+.admin-pagination{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:12px;
+  padding:16px 20px;
+  border-top:1px solid #e2e8f0;
+}
+
+.admin-pagination button{
+  height:40px;
+  padding:0 18px;
+  border:1px solid #dbe5f0;
+  background:#fff;
+  border-radius:12px;
+  cursor:pointer;
+  font-weight:700;
+}
+
+.admin-pagination button:hover{
+  background:#f8fafc;
+}
+
+.admin-pagination button:disabled{
+  opacity:.5;
+  cursor:not-allowed;
+}
+
+/* ==========================================
+   MOBILE
+========================================== */
+
+@media(max-width:768px){
+
+  .admin-table{
+    min-width:900px;
+  }
+
+  .admin-pagination{
+    flex-direction:column;
+    align-items:stretch;
+  }
+
+  .admin-pagination button{
+    width:100%;
+  }
+
+}

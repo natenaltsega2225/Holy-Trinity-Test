@@ -1,414 +1,841 @@
-
-// frontend/src/components/MembershipDashboard/pages/Donate.jsx
-
-import React, {
-  useMemo,
-  useState,
-} from "react";
+//frontend\src\components\MembershipDashboard\pages\Donations.jsx
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  Bus,
+  CreditCard,
+  Gift,
+  GraduationCap,
+  RefreshCcw,
+  Repeat,
+  ShieldCheck,
+  Target,
+} from "lucide-react";
+import { useLocation, useNavigate } from "react-router-dom";
 
 import api from "../../api";
+import "../../../styles/member-dashboard.css";
 
-import "../membership-dashboard.css";
-
-/* =========================================================
-   DONATION CATEGORIES
-========================================================= */
-
-const DONATION_CATEGORIES = [
-
+const PAYMENT_TYPES = [
   {
-    value:
-      "plate_collection",
-
-    label:
-      "መባ — Plate Collection",
+    key: "donation",
+    label: "Donation",
+    sub: "Give to church funds and categories.",
+    icon: Gift,
   },
-
   {
-    value:
-      "candle_sale",
-
-    label:
-      "ሻማ — Candle Sale",
+    key: "pledge",
+    label: "Pledge",
+    sub: "Pay or start a pledge contribution.",
+    icon: Target,
   },
-
   {
-    value:
-      "general_donation",
-
-    label:
-      "ስጦታ — General Donation",
+    key: "school",
+    label: "School",
+    sub: "Pay school program registration.",
+    icon: GraduationCap,
   },
-
   {
-    value:
-      "tithe",
-
-    label:
-      "አስራት — Tithe",
+    key: "trip",
+    label: "Trip",
+    sub: "Pay trip program registration.",
+    icon: Bus,
   },
-
   {
-    value:
-      "vows",
-
-    label:
-      "ስዕለት — Vows",
-  },
-
-  {
-    value:
-      "baptism",
-
-    label:
-      "ክርስትና — Baptism",
-  },
-
-  {
-    value:
-      "wedding_engagement",
-
-    label:
-      "ጋብቻ — Wedding / Engagement",
-  },
-
-  {
-    value:
-      "memorial_service",
-
-    label:
-      "ፍታት — Memorial Service",
-  },
-
-  {
-    value:
-      "pledge",
-
-    label:
-      "ቃል የተገባ — Pledge",
-  },
-
-  {
-    value:
-      "building_fund",
-
-    label:
-      "ማሰሪያ — Building Fund",
-  },
-
-  {
-    value:
-      "charity_fund",
-
-    label:
-      "በጎ አድራጎት — Charity Fund",
-  },
-
-  {
-    value:
-      "auction",
-
-    label:
-      "ጨረታ — Auction",
-  },
-
-  {
-    value:
-      "other_fund",
-
-    label:
-      "ሌላ — Other Fund",
-  },
-
-  {
-    value:
-      "sunday_cash_collection",
-
-    label:
-      "እሁድ — Sunday Collection",
+    key: "membership",
+    label: "Membership",
+    sub: "Renew dues or enable auto-pay.",
+    icon: CreditCard,
   },
 ];
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+const DONATION_CATEGORIES = [
+  { value: "plate_collection", label: "መባ — Plate Collection" },
+  { value: "candle_sale", label: "ሻማ — Candle Sale" },
+  { value: "general_donation", label: "ስጦታ — General Donation" },
+  { value: "tithe", label: "አስራት — Tithe" },
+  { value: "vows", label: "ስዕለት — Vows" },
+  { value: "baptism", label: "ክርስትና — Baptism" },
+  { value: "wedding_engagement", label: "ጋብቻ / ቀለበት — Wedding / Engagement" },
+  { value: "memorial_service", label: "ፍታት — Memorial Service" },
+  { value: "pledge", label: "ቃል የተገባ — Pledge" },
+  { value: "building_fund", label: "የቤተክርስቲያን ማሰሪያ — Building Fund" },
+  { value: "charity_fund", label: "በጎ አድራጎት — Charity Fund" },
+  { value: "auction", label: "ጨረታ — Auction" },
+  { value: "other_fund", label: "ሌላ — Other Fund" },
+];
 
-export default function Donate() {
+const PLAN_ENDPOINTS = ["/dues/plans", "/membership/plans", "/member/plans"];
+const SCHOOL_ENDPOINTS = ["/school/programs"];
+const TRIP_ENDPOINTS = ["/trip/programs"];
+const PLEDGE_ENDPOINTS = [
+  "/membership/pledges",
+  "/membership/me/pledges",
+  "/member/pledges",
+  "/pledges/my",
+  "/finance/campaigns",
+];
 
-  const [form, setForm] =
-    useState({
+const CHECKOUT_ENDPOINTS = [
+  "/checkout/member-payment",
+  "/membership/payments/checkout",
+  "/payments/member/checkout",
+  "/payments/checkout",
+  "/checkout/membership",
+];
 
-      category:
-        "general_donation",
+function money(value) {
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
+}
 
-      amount: "",
+function numberValue(value) {
+  const parsed = Number(value);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
 
-      note: "",
-    });
+function clean(value, fallback = "--") {
+  const text = String(value ?? "").trim();
+  return text || fallback;
+}
 
-  const [loading, setLoading] =
-    useState(false);
+function firstValue(source, keys, fallback = "") {
+  for (const key of keys) {
+    if (source?.[key] !== undefined && source?.[key] !== null && source?.[key] !== "") {
+      return source[key];
+    }
+  }
+  return fallback;
+}
 
-  const [error, setError] =
-    useState("");
+function firstArray(source, keys) {
+  if (Array.isArray(source)) return source;
 
-  /* =====================================================
-     VALID
-  ===================================================== */
-
-  const valid =
-    useMemo(() => {
-
-      return (
-
-        Number(
-          form.amount
-        ) > 0
-      );
-
-    }, [form]);
-
-  /* =====================================================
-     UPDATE
-  ===================================================== */
-
-  function update(
-    key,
-    value
-  ) {
-
-    setForm((s) => ({
-      ...s,
-      [key]: value,
-    }));
+  for (const key of keys) {
+    if (Array.isArray(source?.[key])) return source[key];
   }
 
-  /* =====================================================
-     DONATE
-  ===================================================== */
+  if (Array.isArray(source?.data?.rows)) return source.data.rows;
+  if (Array.isArray(source?.data?.items)) return source.data.items;
+  if (Array.isArray(source?.data?.data)) return source.data.data;
 
-  async function handleDonate() {
+  return [];
+}
 
+function parseJsonArray(value) {
+  if (Array.isArray(value)) return value;
+
+  if (typeof value === "string") {
     try {
-
-      setLoading(true);
-
-      setError("");
-
-      const { data } =
-        await api.post(
-
-          "/member/donate",
-
-          {
-
-            amount:
-              Number(
-                form.amount
-              ),
-
-            category:
-              "donation",
-
-            sub_category:
-              form.category,
-
-            notes:
-              form.note,
-          }
-        );
-
-      if (
-        data?.url
-      ) {
-
-        window.location.href =
-          data.url;
-      }
-
-    } catch (err) {
-
-      console.error(err);
-
-      setError(
-
-        err?.response?.data
-          ?.error ||
-
-        "Donation failed."
-      );
-
-    } finally {
-
-      setLoading(false);
+      const parsed = JSON.parse(value);
+      return Array.isArray(parsed) ? parsed : [];
+    } catch {
+      return [];
     }
   }
 
-  /* =====================================================
-     UI
-  ===================================================== */
+  return [];
+}
+
+function normalizeRows(payload) {
+  return firstArray(payload, [
+    "rows",
+    "items",
+    "results",
+    "data",
+    "plans",
+    "programs",
+    "pledges",
+    "campaigns",
+  ]);
+}
+
+function optionId(row) {
+  return String(firstValue(row, ["id", "program_id", "plan_id", "campaign_id", "pledge_id"], ""));
+}
+
+function optionName(row) {
+  return clean(
+    firstValue(row, [
+      "name",
+      "title",
+      "program_name",
+      "program_title",
+      "plan_name",
+      "campaign_name",
+      "pledge_name",
+    ]),
+    "Untitled"
+  );
+}
+
+function rowAmount(row) {
+  return numberValue(
+    firstValue(row, [
+      "amount",
+      "price",
+      "price_per_person",
+      "monthly_amount",
+      "membership_amount",
+      "total_amount",
+      "remaining_balance",
+      "pledged_amount",
+    ])
+  );
+}
+
+function schoolUnitAmount(program, quantity) {
+  const tiers = parseJsonArray(firstValue(program, ["pricing_tiers", "pricing_tiers_json"], []));
+  const normalizedQty = Math.max(1, Number(quantity || 1));
+
+  const exactTier = tiers.find((tier) => {
+    const tierQty = Number(
+      firstValue(tier, ["student_count", "students", "quantity", "qty", "count"], 0)
+    );
+    return tierQty === normalizedQty;
+  });
+
+  if (exactTier) {
+    return numberValue(firstValue(exactTier, ["amount", "price", "total"], 0));
+  }
+
+  return rowAmount(program) * normalizedQty;
+}
+
+async function getFirstAvailable(endpoints) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.get(endpoint);
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (![401, 403, 404].includes(error?.response?.status)) break;
+    }
+  }
+
+  if (lastError) throw lastError;
+  return null;
+}
+
+async function postFirstAvailable(endpoints, payload) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response = await api.post(endpoint, payload);
+      return response.data;
+    } catch (error) {
+      lastError = error;
+      if (![404, 405].includes(error?.response?.status)) break;
+    }
+  }
+
+  throw lastError || new Error("Checkout route is not available.");
+}
+
+function TypeButton({ option, active, onClick }) {
+  const Icon = option.icon;
 
   return (
-
-    <div className="member-page">
-
-      {/* =========================================
-          HEADER
-      ========================================= */}
-
-      <div className="member-page-header">
-
-        <div>
-
-          <p className="member-page-eyebrow">
-            Church Giving
-          </p>
-
-          <h1>
-            Donate & Support
-          </h1>
-
-          <p>
-            Support church ministries,
-            building funds,
-            charitable outreach,
-            and sacred services.
-          </p>
-
-        </div>
-
+    <button
+      type="button"
+      className={`member-card member-card-feature ${active ? "is-active" : ""}`}
+      onClick={onClick}
+    >
+      <div className="member-section-header">
+        <Icon size={20} />
+        <h3>{option.label}</h3>
       </div>
+      <p className="member-muted">{option.sub}</p>
+    </button>
+  );
+}
 
-      {/* =========================================
-          FORM
-      ========================================= */}
+function SummaryRow({ label, value }) {
+  return (
+    <div className="member-detail-row">
+      <span>{label}</span>
+      <strong>{value}</strong>
+    </div>
+  );
+}
 
-      <div className="member-card donate-card">
+export default function Donate() {
+  const location = useLocation();
+  const navigate = useNavigate();
 
-        <div className="member-card-header">
+  const requestedType = useMemo(() => {
+    const params = new URLSearchParams(location.search);
+    const type = params.get("type") || params.get("category");
+    return PAYMENT_TYPES.some((item) => item.key === type) ? type : "donation";
+  }, [location.search]);
 
-          <h2>
-            Donation Information
-          </h2>
+  const [form, setForm] = useState({
+    type: requestedType,
+    donation_category: "tithe",
+    amount: "",
+    pledge_id: "",
+    school_program_id: "",
+    trip_program_id: "",
+    plan_id: "",
+    coverage_months: 1,
+    quantity: 1,
+    payment_method: "card",
+    auto_subscription: false,
+    notes: "",
+  });
 
+  const [plans, setPlans] = useState([]);
+  const [schoolPrograms, setSchoolPrograms] = useState([]);
+  const [tripPrograms, setTripPrograms] = useState([]);
+  const [pledges, setPledges] = useState([]);
+
+  const [loading, setLoading] = useState(true);
+  const [submitting, setSubmitting] = useState(false);
+  const [err, setErr] = useState("");
+  const [ok, setOk] = useState("");
+
+  useEffect(() => {
+    setForm((current) => ({
+      ...current,
+      type: requestedType,
+    }));
+  }, [requestedType]);
+
+  const load = useCallback(async () => {
+    setLoading(true);
+    setErr("");
+
+    try {
+      const [planPayload, schoolPayload, tripPayload, pledgePayload] =
+        await Promise.allSettled([
+          getFirstAvailable(PLAN_ENDPOINTS),
+          getFirstAvailable(SCHOOL_ENDPOINTS),
+          getFirstAvailable(TRIP_ENDPOINTS),
+          getFirstAvailable(PLEDGE_ENDPOINTS),
+        ]);
+
+      if (planPayload.status === "fulfilled") {
+        setPlans(normalizeRows(planPayload.value));
+      }
+
+      if (schoolPayload.status === "fulfilled") {
+        setSchoolPrograms(normalizeRows(schoolPayload.value));
+      }
+
+      if (tripPayload.status === "fulfilled") {
+        setTripPrograms(normalizeRows(tripPayload.value));
+      }
+
+      if (pledgePayload.status === "fulfilled") {
+        setPledges(normalizeRows(pledgePayload.value));
+      }
+    } catch (error) {
+      setErr(error?.response?.data?.error || "Unable to load payment options.");
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    load();
+  }, [load]);
+
+  const selectedPlan = useMemo(
+    () => plans.find((row) => optionId(row) === String(form.plan_id)) || plans[0] || null,
+    [plans, form.plan_id]
+  );
+
+  const selectedSchool = useMemo(
+    () => schoolPrograms.find((row) => optionId(row) === String(form.school_program_id)) || null,
+    [schoolPrograms, form.school_program_id]
+  );
+
+  const selectedTrip = useMemo(
+    () => tripPrograms.find((row) => optionId(row) === String(form.trip_program_id)) || null,
+    [tripPrograms, form.trip_program_id]
+  );
+
+  const selectedPledge = useMemo(
+    () => pledges.find((row) => optionId(row) === String(form.pledge_id)) || null,
+    [pledges, form.pledge_id]
+  );
+
+  const computedAmount = useMemo(() => {
+    if (form.type === "membership") {
+      const months = Math.max(1, Number(form.coverage_months || 1));
+      const base = rowAmount(selectedPlan);
+      return form.auto_subscription ? base : base * months;
+    }
+
+    if (form.type === "school") {
+      if (!selectedSchool) return 0;
+      return schoolUnitAmount(selectedSchool, form.quantity);
+    }
+
+    if (form.type === "trip") {
+      if (!selectedTrip) return 0;
+      return rowAmount(selectedTrip) * Math.max(1, Number(form.quantity || 1));
+    }
+
+    if (form.type === "pledge") {
+      return numberValue(form.amount || firstValue(selectedPledge, ["remaining_balance", "amount"], 0));
+    }
+
+    return numberValue(form.amount);
+  }, [form, selectedPlan, selectedSchool, selectedTrip, selectedPledge]);
+
+  function updateField(name, value) {
+    setForm((current) => ({
+      ...current,
+      [name]: value,
+    }));
+  }
+
+  function chooseType(type) {
+    setErr("");
+    setOk("");
+
+    setForm((current) => ({
+      ...current,
+      type,
+      amount: "",
+      quantity: 1,
+      auto_subscription: type === "membership" ? current.auto_subscription : false,
+    }));
+  }
+
+  function validate() {
+    if (!computedAmount || computedAmount <= 0) {
+      return "Please enter or select a valid amount.";
+    }
+
+    if (form.type === "membership" && !selectedPlan) {
+      return "Please select a membership plan.";
+    }
+
+    if (form.type === "school" && !selectedSchool) {
+      return "Please select a school program.";
+    }
+
+    if (form.type === "trip" && !selectedTrip) {
+      return "Please select a trip program.";
+    }
+
+    return "";
+  }
+
+  async function submitCheckout(event) {
+    event.preventDefault();
+
+    const validationError = validate();
+    if (validationError) {
+      setErr(validationError);
+      return;
+    }
+
+    setSubmitting(true);
+    setErr("");
+    setOk("");
+
+    try {
+      const type = form.type;
+      const selectedProgram = type === "school" ? selectedSchool : selectedTrip;
+      const selectedProgramName = selectedProgram ? optionName(selectedProgram) : "";
+
+      const payload = {
+        source: "member_dashboard",
+        created_from: "member_dashboard",
+
+        category: type,
+        payment_type: type,
+        type,
+
+        amount: computedAmount,
+        total_amount: computedAmount,
+        subtotal_amount: computedAmount,
+
+        payment_method: form.payment_method,
+        method: form.payment_method,
+
+        create_invoice: true,
+        send_invoice_email: true,
+        send_receipt_email: true,
+
+        return_url: `${window.location.origin}/dash/membership/invoices-receipts`,
+        cancel_url: window.location.href,
+
+        notes: form.notes || "",
+
+        donation_category: type === "donation" ? form.donation_category : "",
+        pledge_id: type === "pledge" ? form.pledge_id || null : null,
+        campaign_id: type === "pledge" ? firstValue(selectedPledge, ["campaign_id", "id"], null) : null,
+        campaign_name: type === "pledge" ? optionName(selectedPledge || {}) : "",
+
+        plan_id: type === "membership" ? optionId(selectedPlan) : null,
+        dues_plan_id: type === "membership" ? optionId(selectedPlan) : null,
+        plan_name: type === "membership" ? optionName(selectedPlan || {}) : "",
+        coverage_months: type === "membership" ? Number(form.coverage_months || 1) : null,
+        auto_subscription: type === "membership" ? Boolean(form.auto_subscription) : false,
+        subscription: type === "membership" ? Boolean(form.auto_subscription) : false,
+
+        school_program_id: type === "school" ? optionId(selectedSchool) : null,
+        trip_program_id: type === "trip" ? optionId(selectedTrip) : null,
+        program_id: type === "school" || type === "trip" ? optionId(selectedProgram) : null,
+        program_name: selectedProgramName,
+        program_title: selectedProgramName,
+        quantity: ["school", "trip"].includes(type) ? Number(form.quantity || 1) : 1,
+        number_of_students: type === "school" ? Number(form.quantity || 1) : null,
+        participants_count: type === "trip" ? Number(form.quantity || 1) : null,
+
+        metadata: {
+          source: "member_dashboard",
+          category: type,
+          payment_type: type,
+          donation_category: type === "donation" ? form.donation_category : "",
+          program_name: selectedProgramName,
+          campaign_name: type === "pledge" ? optionName(selectedPledge || {}) : "",
+          auto_subscription: type === "membership" ? String(Boolean(form.auto_subscription)) : "false",
+        },
+      };
+
+      const response = await postFirstAvailable(CHECKOUT_ENDPOINTS, payload);
+
+      const checkoutUrl = firstValue(response, [
+        "url",
+        "checkout_url",
+        "payment_url",
+        "session_url",
+        "stripe_url",
+        "redirect_url",
+      ]);
+
+      const paymentLink = firstValue(response, [
+        "payment_link",
+        "payment_link_url",
+        "public_url",
+        "invoice_url",
+        "checkoutUrl",
+      ]);
+
+      if (checkoutUrl || paymentLink) {
+        window.location.assign(checkoutUrl || paymentLink);
+        return;
+      }
+
+      setOk("Payment request was created. Please check your email for the invoice and payment link.");
+    } catch (error) {
+      setErr(
+        error?.response?.data?.details ||
+          error?.response?.data?.error ||
+          error?.message ||
+          "Unable to start checkout."
+      );
+    } finally {
+      setSubmitting(false);
+    }
+  }
+
+  const selectedType = PAYMENT_TYPES.find((item) => item.key === form.type) || PAYMENT_TYPES[0];
+
+  return (
+    <div className="membership-dashboard-page member-page-stack">
+      <section className="member-page-hero">
+        <div>
+          <span className="member-eyebrow">Member Giving</span>
+          <h1>Make a Payment</h1>
+          <p className="member-page-subtitle">
+            Donate, pay a pledge, renew membership, or register for school and trip programs
+            through secure card or ACH checkout.
+          </p>
         </div>
 
-        {/* CATEGORY */}
-
-        <div className="member-form-group">
-
-          <label>
-            Donation Category
-          </label>
-
-          <select
-            value={form.category}
-            onChange={(e) =>
-              update(
-                "category",
-                e.target.value
-              )
-            }
-          >
-
-            {DONATION_CATEGORIES.map(
-
-              (c) => (
-
-                <option
-                  key={c.value}
-                  value={c.value}
-                >
-                  {c.label}
-                </option>
-
-              )
-            )}
-
-          </select>
-
-        </div>
-
-        {/* AMOUNT */}
-
-        <div className="member-form-group">
-
-          <label>
-            Amount
-          </label>
-
-          <input
-            type="number"
-            min="1"
-            step="0.01"
-            value={form.amount}
-            onChange={(e) =>
-              update(
-                "amount",
-                e.target.value
-              )
-            }
-            placeholder="Enter donation amount"
-          />
-
-        </div>
-
-        {/* NOTE */}
-
-        <div className="member-form-group">
-
-          <label>
-            Notes
-          </label>
-
-          <textarea
-            rows={4}
-            value={form.note}
-            onChange={(e) =>
-              update(
-                "note",
-                e.target.value
-              )
-            }
-            placeholder="Optional dedication, memorial note, or giving note"
-          />
-
-        </div>
-
-        {/* ERROR */}
-
-        {error ? (
-
-          <div className="member-alert error">
-            {error}
-          </div>
-
-        ) : null}
-
-        {/* ACTION */}
-
-        <div className="donate-action">
-
-          <button
-            className="member-primary-btn"
-            disabled={
-              !valid || loading
-            }
-            onClick={
-              handleDonate
-            }
-          >
-
-            {loading
-              ? "Redirecting..."
-              : "Continue to Secure Payment"}
-
+        <div className="member-page-actions">
+          <button type="button" className="member-btn member-btn-light" onClick={load}>
+            <RefreshCcw size={16} className={loading ? "member-spin" : ""} />
+            Refresh
           </button>
 
+          <button
+            type="button"
+            className="member-btn member-btn-light"
+            onClick={() => navigate("/dash/membership/invoices-receipts")}
+          >
+            <ShieldCheck size={16} />
+            Invoices
+          </button>
         </div>
+      </section>
 
-      </div>
+      {err ? (
+        <div className="member-alert member-alert-danger">
+          <AlertTriangle size={17} />
+          {err}
+        </div>
+      ) : null}
 
+      {ok ? (
+        <div className="member-alert member-alert-success">
+          <ShieldCheck size={17} />
+          {ok}
+        </div>
+      ) : null}
+
+      <section className="member-dashboard-grid">
+        {PAYMENT_TYPES.map((option) => (
+          <TypeButton
+            key={option.key}
+            option={option}
+            active={form.type === option.key}
+            onClick={() => chooseType(option.key)}
+          />
+        ))}
+      </section>
+
+      <form className="member-dashboard-grid" onSubmit={submitCheckout}>
+        <section className="member-card member-card-feature">
+          <div className="member-section-header">
+            <selectedType.icon size={21} />
+            <h2>{selectedType.label} Details</h2>
+          </div>
+
+          {form.type === "donation" ? (
+            <div className="member-filter-grid">
+              <label>
+                Donation Category
+                <select
+                  value={form.donation_category}
+                  onChange={(event) => updateField("donation_category", event.target.value)}
+                >
+                  {DONATION_CATEGORIES.map((category) => (
+                    <option key={category.value} value={category.value}>
+                      {category.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Amount
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) => updateField("amount", event.target.value)}
+                  placeholder="100.00"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "pledge" ? (
+            <div className="member-filter-grid">
+              <label>
+                Pledge / Campaign
+                <select
+                  value={form.pledge_id}
+                  onChange={(event) => {
+                    const nextId = event.target.value;
+                    const pledge = pledges.find((row) => optionId(row) === String(nextId));
+
+                    setForm((current) => ({
+                      ...current,
+                      pledge_id: nextId,
+                      amount: firstValue(pledge, ["remaining_balance", "amount"], current.amount),
+                    }));
+                  }}
+                >
+                  <option value="">General pledge payment</option>
+                  {pledges.map((pledge) => (
+                    <option key={optionId(pledge)} value={optionId(pledge)}>
+                      {optionName(pledge)} - {money(rowAmount(pledge))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Amount
+                <input
+                  type="number"
+                  min="1"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) => updateField("amount", event.target.value)}
+                  placeholder="100.00"
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "school" ? (
+            <div className="member-filter-grid">
+              <label>
+                School Program
+                <select
+                  value={form.school_program_id}
+                  onChange={(event) => updateField("school_program_id", event.target.value)}
+                >
+                  <option value="">Select school program</option>
+                  {schoolPrograms.map((program) => (
+                    <option key={optionId(program)} value={optionId(program)}>
+                      {optionName(program)} - {money(rowAmount(program))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Number of Students
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(event) => updateField("quantity", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "trip" ? (
+            <div className="member-filter-grid">
+              <label>
+                Trip Program
+                <select
+                  value={form.trip_program_id}
+                  onChange={(event) => updateField("trip_program_id", event.target.value)}
+                >
+                  <option value="">Select trip program</option>
+                  {tripPrograms.map((program) => (
+                    <option key={optionId(program)} value={optionId(program)}>
+                      {optionName(program)} - {money(rowAmount(program))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Participants
+                <input
+                  type="number"
+                  min="1"
+                  step="1"
+                  value={form.quantity}
+                  onChange={(event) => updateField("quantity", event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {form.type === "membership" ? (
+            <div className="member-filter-grid">
+              <label>
+                Membership Plan
+                <select
+                  value={form.plan_id}
+                  onChange={(event) => updateField("plan_id", event.target.value)}
+                >
+                  {plans.map((plan) => (
+                    <option key={optionId(plan)} value={optionId(plan)}>
+                      {optionName(plan)} - {money(rowAmount(plan))}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Coverage Months
+                <select
+                  value={form.coverage_months}
+                  onChange={(event) => updateField("coverage_months", event.target.value)}
+                  disabled={form.auto_subscription}
+                >
+                  {[1, 3, 6, 12].map((month) => (
+                    <option key={month} value={month}>
+                      {month} Month{month > 1 ? "s" : ""}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label>
+                Auto Subscription
+                <select
+                  value={form.auto_subscription ? "yes" : "no"}
+                  onChange={(event) =>
+                    updateField("auto_subscription", event.target.value === "yes")
+                  }
+                >
+                  <option value="no">One-time renewal</option>
+                  <option value="yes">Auto subscription</option>
+                </select>
+              </label>
+            </div>
+          ) : null}
+
+          <div className="member-filter-grid">
+            <label>
+              Checkout Method
+              <select
+                value={form.payment_method}
+                onChange={(event) => updateField("payment_method", event.target.value)}
+              >
+                <option value="card">Card</option>
+                <option value="ach">ACH / Bank</option>
+              </select>
+            </label>
+
+            <label>
+              Notes
+              <input
+                value={form.notes}
+                onChange={(event) => updateField("notes", event.target.value)}
+                placeholder="Optional note"
+              />
+            </label>
+          </div>
+        </section>
+
+        <aside className="member-card">
+          <div className="member-section-header">
+            <CreditCard size={20} />
+            <h2>Checkout Summary</h2>
+          </div>
+
+          <div className="member-detail-grid">
+            <SummaryRow label="Payment Type" value={selectedType.label} />
+            <SummaryRow label="Method" value={form.payment_method === "ach" ? "ACH" : "Card"} />
+            <SummaryRow label="Invoice Email" value="Will be sent" />
+            <SummaryRow label="Receipt Email" value="After payment" />
+            <SummaryRow
+              label={form.auto_subscription ? "Subscription Amount" : "Total Due"}
+              value={money(computedAmount)}
+            />
+          </div>
+
+          {form.auto_subscription ? (
+            <div className="member-alert member-alert-success">
+              <Repeat size={17} />
+              Auto subscription can be managed or changed later from your coverage page.
+            </div>
+          ) : null}
+
+          <button
+            type="submit"
+            className="member-btn member-btn-primary member-full-width"
+            disabled={submitting || loading}
+          >
+            {submitting ? <RefreshCcw size={16} className="member-spin" /> : <CreditCard size={16} />}
+            Continue to Secure Checkout
+          </button>
+        </aside>
+      </form>
     </div>
   );
 }

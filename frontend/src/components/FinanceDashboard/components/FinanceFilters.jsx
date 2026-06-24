@@ -1,190 +1,300 @@
-
 // frontend/src/components/FinanceDashboard/components/FinanceFilters.jsx
-import React from "react";
 
-function getFilterLabel(filter) {
-  if (filter?.label) return filter.label;
+import React, { useMemo, useState } from "react";
+import {
+  CalendarDays,
+  Download,
+  RefreshCcw,
+  Search,
+  SlidersHorizontal,
+  X,
+} from "lucide-react";
 
-  const key = String(filter?.key || "")
-    .replace(/([A-Z])/g, " $1")
-    .replaceAll("_", " ")
-    .trim();
+import "../../../styles/finance-enterprise.css";
 
-  if (!key) return "Filter";
+const PERIOD_OPTIONS = [
+  { value: "all", label: "All Time" },
+  { value: "today", label: "Today" },
+  { value: "week", label: "This Week" },
+  { value: "month", label: "This Month" },
+  { value: "quarter", label: "This Quarter" },
+  { value: "year", label: "This Year" },
+  { value: "custom", label: "Custom Range" },
+];
 
-  return key.charAt(0).toUpperCase() + key.slice(1);
+function clean(value) {
+  return String(value ?? "").trim();
 }
 
-function renderExtraFilter(filter) {
-  const label = getFilterLabel(filter);
-  const value = filter?.value ?? "";
+function cx(...parts) {
+  return parts.filter(Boolean).join(" ");
+}
+
+function hasValue(value) {
+  if (Array.isArray(value)) return value.length > 0;
+  return clean(value) !== "";
+}
+
+function filterValue(filter, values = {}) {
+  if (filter.value !== undefined) return filter.value;
+  if (filter.key) return values[filter.key] ?? "";
+  return "";
+}
+
+function renderFilter(filter, values, onFilterChange) {
+  const value = filterValue(filter, values);
+
   const handleChange = (nextValue) => {
-    if (typeof filter?.onChange === "function") {
+    if (typeof filter.onChange === "function") {
       filter.onChange(nextValue);
+      return;
+    }
+
+    if (typeof onFilterChange === "function" && filter.key) {
+      onFilterChange(filter.key, nextValue);
     }
   };
 
-  if (Array.isArray(filter?.options)) {
+  if (filter.hidden) return null;
+
+  if (filter.render && typeof filter.render === "function") {
     return (
-      <div key={filter.key} className="finance-filter-group">
-        <label className="finance-filter-label">{label}</label>
+      <div key={filter.key || filter.label} className="finance-filter-control">
+        {filter.render({
+          value,
+          onChange: handleChange,
+          filter,
+        })}
+      </div>
+    );
+  }
+
+  if (Array.isArray(filter.options)) {
+    return (
+      <label key={filter.key || filter.label} className="finance-filter-control">
+        {filter.label ? <span>{filter.label}</span> : null}
         <select
-          className="finance-input"
           value={value}
-          onChange={(e) => handleChange(e.target.value)}
+          disabled={filter.disabled}
+          onChange={(event) => handleChange(event.target.value)}
         >
           {filter.options.map((option) => (
-            <option key={`${filter.key}-${option.value}`} value={option.value}>
+            <option key={option.value || "all"} value={option.value}>
               {option.label}
             </option>
           ))}
         </select>
-      </div>
+      </label>
     );
   }
 
-  if (filter?.type === "date") {
+  if (filter.type === "checkbox") {
     return (
-      <div key={filter.key} className="finance-filter-group">
-        <label className="finance-filter-label">{label}</label>
+      <label
+        key={filter.key || filter.label}
+        className="finance-filter-check"
+      >
         <input
-          type="date"
-          className="finance-input"
-          value={value}
-          onChange={(e) => handleChange(e.target.value)}
+          type="checkbox"
+          checked={Boolean(value)}
+          disabled={filter.disabled}
+          onChange={(event) => handleChange(event.target.checked)}
         />
-      </div>
+        <span>{filter.label}</span>
+      </label>
     );
   }
 
   return (
-    <div key={filter.key} className="finance-filter-group">
-      <label className="finance-filter-label">{label}</label>
+    <label key={filter.key || filter.label} className="finance-filter-control">
+      {filter.label ? <span>{filter.label}</span> : null}
       <input
-        type="text"
-        className="finance-input"
+        type={filter.type || "text"}
         value={value}
-        onChange={(e) => handleChange(e.target.value)}
+        disabled={filter.disabled}
+        placeholder={filter.placeholder || filter.label || filter.key}
+        min={filter.min}
+        max={filter.max}
+        step={filter.step}
+        onChange={(event) => handleChange(event.target.value)}
       />
-    </div>
+    </label>
   );
 }
 
 export default function FinanceFilters({
-  search,
+  search = "",
   onSearchChange,
-  period,
-  onPeriodChange,
-  extraFilters = [],
-  pageSize = 10,
-  onPageSizeChange,
-  showPeriodFilter = true,
-  searchPlaceholder = "Search...",
+  searchPlaceholder = "Search finance records...",
 
-  // 🔥 NEW
-  dateFrom,
-  dateTo,
-  onDateChange,
-  onApply,
+  period = "all",
+  onPeriodChange,
+  showPeriod = true,
+  periodOptions = PERIOD_OPTIONS,
+
+  dateFrom = "",
+  dateTo = "",
+  onDateFromChange,
+  onDateToChange,
+
+  filters = [],
+  values = {},
+  onFilterChange,
+
+  onClear,
+  onRefresh,
   onExport,
+  exportDisabled = false,
+  refreshDisabled = false,
+
+  compact = false,
+  collapsible = true,
+  defaultExpanded = true,
+  children,
 }) {
-  const isCustom = period === "custom";
+  const [expanded, setExpanded] = useState(defaultExpanded);
+
+  const activeCount = useMemo(() => {
+    let count = 0;
+
+    if (hasValue(search)) count += 1;
+    if (period && period !== "all") count += 1;
+    if (hasValue(dateFrom)) count += 1;
+    if (hasValue(dateTo)) count += 1;
+
+    filters.forEach((filter) => {
+      if (filter.hidden) return;
+
+      const value = filterValue(filter, values);
+
+      if (hasValue(value)) count += 1;
+    });
+
+    return count;
+  }, [search, period, dateFrom, dateTo, filters, values]);
+
+  const showCustomDates =
+    period === "custom" ||
+    hasValue(dateFrom) ||
+    hasValue(dateTo) ||
+    onDateFromChange ||
+    onDateToChange;
 
   return (
-    <section className="finance-filters-card">
-      <div className="finance-filters-top">
+    <section className={cx("finance-filters", compact ? "compact" : "")}>
+      <div className="finance-filters-primary">
+        {typeof onSearchChange === "function" ? (
+          <label className="finance-search-field">
+            <Search size={16} />
+            <input
+              value={search}
+              onChange={(event) => onSearchChange(event.target.value)}
+              placeholder={searchPlaceholder}
+            />
+          </label>
+        ) : null}
 
-        {/* 🔍 SEARCH */}
-        <div className="finance-filter-group">
-          <label className="finance-filter-label">Search</label>
-          <input
-            type="text"
-            className="finance-input finance-search-input"
-            placeholder={searchPlaceholder}
-            value={search || ""}
-            onChange={(e) => onSearchChange?.(e.target.value)}
-          />
-        </div>
-
-        {/* 📅 PERIOD */}
-        {showPeriodFilter && (
-          <div className="finance-filter-group">
-            <label className="finance-filter-label">Period</label>
+        {showPeriod && typeof onPeriodChange === "function" ? (
+          <label className="finance-filter-control">
+            <span>Period</span>
             <select
-              className="finance-input"
-              value={period || "all"}
-              onChange={(e) => onPeriodChange?.(e.target.value)}
+              value={period}
+              onChange={(event) => onPeriodChange(event.target.value)}
             >
-              <option value="all">All Time</option>
-              <option value="weekly">This Week</option>
-              <option value="monthly">This Month</option>
-              <option value="yearly">This Year</option>
-              <option value="custom">Custom</option>
+              {periodOptions.map((option) => (
+                <option key={option.value || "all"} value={option.value}>
+                  {option.label}
+                </option>
+              ))}
             </select>
-          </div>
-        )}
+          </label>
+        ) : null}
 
-        {/* 🔥 DATE RANGE (ONLY FOR CUSTOM) */}
-        {isCustom && (
-          <>
-            <div className="finance-filter-group">
-              <label className="finance-filter-label">From</label>
-              <input
-                type="date"
-                className="finance-input"
-                value={dateFrom || ""}
-                onChange={(e) => onDateChange?.("from", e.target.value)}
-              />
-            </div>
-
-            <div className="finance-filter-group">
-              <label className="finance-filter-label">To</label>
-              <input
-                type="date"
-                className="finance-input"
-                value={dateTo || ""}
-                onChange={(e) => onDateChange?.("to", e.target.value)}
-              />
-            </div>
-          </>
-        )}
-
-        {/* 📄 PAGE SIZE */}
-        <div className="finance-filter-group">
-          <label className="finance-filter-label">Page Size</label>
-          <select
-            className="finance-input finance-page-size"
-            value={pageSize}
-            onChange={(e) => onPageSizeChange?.(Number(e.target.value))}
+        {collapsible ? (
+          <button
+            type="button"
+            className={cx("finance-btn ghost", expanded ? "active" : "")}
+            onClick={() => setExpanded((prev) => !prev)}
           >
-            {[10, 25, 50, 100].map((n) => (
-              <option key={n} value={n}>
-                {n} / page
-              </option>
-            ))}
-          </select>
-        </div>
+            <SlidersHorizontal size={16} />
+            Filters
+            {activeCount ? (
+              <span className="finance-filter-count">{activeCount}</span>
+            ) : null}
+          </button>
+        ) : null}
 
-        {/* EXTRA FILTERS */}
-        {extraFilters.map((filter) => renderExtraFilter(filter))}
-
-        {/* 🚀 ACTION BUTTONS */}
         <div className="finance-filter-actions">
-          <button
-            className="btn-primary"
-            onClick={onApply}
-          >
-            Apply
-          </button>
+          {onRefresh ? (
+            <button
+              type="button"
+              className="finance-btn ghost"
+              onClick={onRefresh}
+              disabled={refreshDisabled}
+            >
+              <RefreshCcw size={16} />
+              Refresh
+            </button>
+          ) : null}
 
-          <button
-            className="btn-secondary"
-            onClick={onExport}
-          >
-            Export CSV
-          </button>
+          {onExport ? (
+            <button
+              type="button"
+              className="finance-btn ghost"
+              onClick={onExport}
+              disabled={exportDisabled}
+            >
+              <Download size={16} />
+              Export
+            </button>
+          ) : null}
+
+          {onClear ? (
+            <button
+              type="button"
+              className="finance-btn ghost"
+              onClick={onClear}
+              disabled={!activeCount}
+            >
+              <X size={16} />
+              Clear
+            </button>
+          ) : null}
         </div>
       </div>
+
+      {expanded || !collapsible ? (
+        <div className="finance-filters-secondary">
+          {showCustomDates ? (
+            <div className="finance-date-filter-group">
+              <CalendarDays size={16} />
+              <label>
+                From
+                <input
+                  type="date"
+                  value={dateFrom}
+                  onChange={(event) => onDateFromChange?.(event.target.value)}
+                />
+              </label>
+
+              <label>
+                To
+                <input
+                  type="date"
+                  value={dateTo}
+                  onChange={(event) => onDateToChange?.(event.target.value)}
+                />
+              </label>
+            </div>
+          ) : null}
+
+          {filters.map((filter) => renderFilter(filter, values, onFilterChange))}
+
+          {children}
+        </div>
+      ) : null}
     </section>
   );
 }
+
+export { PERIOD_OPTIONS };

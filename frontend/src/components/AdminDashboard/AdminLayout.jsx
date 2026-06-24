@@ -1,7 +1,8 @@
-// // // src/components/AdminDashboard/AdminLayout.jsx
+// src/components/AdminDashboard/AdminLayout.jsx
+
 import React from "react";
 import DashboardLayout from "../Shared/DashboardLayout";
-
+import "../../styles/finance-enterprise.css";
 export default function AdminLayout() {
   const nav = [
     {
@@ -10,19 +11,23 @@ export default function AdminLayout() {
       label: "Members",
       icon: "👥",
     },
-   
-   {
-  to: "/dash/admin/certificates",
-  fullPath: "/dash/admin/certificates",
-  label: "Certificates",
-  icon: "🏆",
-},
-
+    {
+      to: "/dash/admin/certificates",
+      fullPath: "/dash/admin/certificates",
+      label: "Certificates",
+      icon: "🏆",
+    },
     {
       to: "/dash/admin/events",
       fullPath: "/dash/admin/events",
       label: "Events",
       icon: "📅",
+    },
+    {
+      to: "/dash/admin/program-registrations",
+      fullPath: "/dash/admin/program-registrations",
+      label: "Program Registration",
+      icon: "🎓",
     },
     {
       to: "/dash/admin/gallery",

@@ -1,1061 +1,521 @@
 // frontend/src/components/FinanceDashboard/components/FinancePaymentDrawer.jsx
-
-import React, {
-  useEffect,
-  useMemo,
-  useState,
-} from "react";
-
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  X,
-  Receipt,
-  FileText,
-  CreditCard,
-  Calendar,
-  Mail,
-  User,
-  Landmark,
-  Clock3,
-  Download,
-  Send,
-  Wallet,
-  BadgeDollarSign,
-  CheckCircle2,
   AlertTriangle,
+  BadgeDollarSign,
+  Calendar,
+  CheckCircle2,
+  CreditCard,
+  Download,
+  FileText,
+  Mail,
+  Receipt,
   RefreshCcw,
+  Send,
+  ShieldCheck,
+  User,
+  Wallet,
+  X,
 } from "lucide-react";
 
 import api from "../../api";
 
 import FinanceBadge from "../../Shared/FinanceBadge";
 import CoverageDisplay from "../../Shared/CoverageDisplay";
+import FinancePaymentAuditTimeline from "./FinancePaymentAuditTimeline";
 
 import {
-  money,
-  pretty,
-  formatDate,
-  categoryLabel,
-  paymentSource,
   cardDisplay,
+  categoryLabel,
+  formatDate,
+  money,
+  paymentSource,
+  pretty,
 } from "../../../utils/paymentFormatters";
 
 import "../../../styles/finance-enterprise.css";
 
-/* =========================================================
-   HELPERS
-========================================================= */
-
 function statusTone(status) {
+  const value = String(status || "").toLowerCase();
 
-  const s = String(
-    status || ""
-  ).toLowerCase();
-
-  if (
-    s === "paid" ||
-    s === "completed" ||
-    s === "success"
-  ) {
+  if (["paid", "completed", "posted", "success", "succeeded", "sent"].includes(value)) {
     return "success";
   }
 
-  if (
-    s === "pending"
-  ) {
+  if (["pending", "processing", "queued", "open", "partial"].includes(value)) {
     return "warning";
   }
 
-  if (
-    s === "failed" ||
-    s === "cancelled" ||
-    s === "refunded"
-  ) {
+  if (["failed", "cancelled", "canceled", "refunded", "void"].includes(value)) {
     return "danger";
   }
 
   return "primary";
 }
 
-function DetailItem({
-  label,
-  value,
-}) {
+function firstValue(row = {}, keys = [], fallback = "--") {
+  for (const key of keys) {
+    if (row[key] !== undefined && row[key] !== null && row[key] !== "") {
+      return row[key];
+    }
+  }
 
+  return fallback;
+}
+
+function DetailItem({ label, value, wide = false }) {
   return (
-
-    <div className="finance-detail-item">
-
-      <span>
-        {label}
-      </span>
-
-      <strong>
-        {value || "--"}
-      </strong>
-
+    <div className={`finance-detail-item${wide ? " wide" : ""}`}>
+      <span>{label}</span>
+      <strong>{value || "--"}</strong>
     </div>
   );
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+function ActionButton({ children, onClick, disabled, variant = "secondary" }) {
+  return (
+    <button
+      type="button"
+      className={`finance-btn finance-btn-${variant}`}
+      onClick={onClick}
+      disabled={disabled}
+    >
+      {children}
+    </button>
+  );
+}
 
-export default function FinancePaymentDrawer({
-  open,
-  payment,
-  onClose,
-}) {
+function normalizePayment(data, fallback) {
+  return (
+    data?.payment ||
+    data?.row ||
+    data?.data ||
+    data?.record ||
+    fallback ||
+    null
+  );
+}
 
-  const [
-    loading,
-    setLoading,
-  ] = useState(false);
+function normalizeAuditRows(row = {}) {
+  const possible =
+    row.audit ||
+    row.audit_rows ||
+    row.auditTrail ||
+    row.timeline ||
+    row.events ||
+    [];
 
-  const [
-    paymentData,
-    setPaymentData,
-  ] = useState(null);
+  return Array.isArray(possible) ? possible : [];
+}
 
-  const [
-    sending,
-    setSending,
-  ] = useState(false);
+function paymentId(row = {}) {
+  return firstValue(row, ["id", "payment_id"], "");
+}
 
-  /* =====================================================
-     LOAD
-  ===================================================== */
+function receiptId(row = {}) {
+  return firstValue(row, ["receipt_id", "finance_receipt_id"], "");
+}
+
+function invoiceId(row = {}) {
+  return firstValue(row, ["invoice_id", "finance_invoice_id"], "");
+}
+
+function receiptNumber(row = {}) {
+  return firstValue(row, ["receipt_number", "receipt_no"], "");
+}
+
+function invoiceNumber(row = {}) {
+  return firstValue(row, ["invoice_number", "invoice_no"], "");
+}
+
+export default function FinancePaymentDrawer({ open, payment, onClose }) {
+  const [loading, setLoading] = useState(false);
+  const [paymentData, setPaymentData] = useState(null);
+  const [auditRows, setAuditRows] = useState([]);
+  const [sending, setSending] = useState(false);
+  const [error, setError] = useState("");
+
+  const row = paymentData || payment;
 
   useEffect(() => {
-
-    if (
-      !open ||
-      !payment?.id
-    ) {
-      return;
-    }
+    if (!open || !paymentId(payment)) return;
 
     loadPayment();
-
-  }, [
-    open,
-    payment?.id,
-  ]);
+  }, [open, payment?.id, payment?.payment_id]);
 
   async function loadPayment() {
-
     try {
-
       setLoading(true);
+      setError("");
 
-      const {
-        data,
-      } = await api.get(
-        `/payments/${payment.id}`
-      );
+      const id = paymentId(payment);
 
-      setPaymentData(
-        data?.payment ||
-          null
-      );
+      const { data } = await api.get(`/finance/payments/${id}`).catch(async () => {
+        return api.get(`/payments/${id}`);
+      });
 
+      const nextPayment = normalizePayment(data, payment);
+
+      setPaymentData(nextPayment);
+      setAuditRows(normalizeAuditRows(data) || normalizeAuditRows(nextPayment));
     } catch (err) {
-
-      console.error(err);
-
+      console.error("Payment drawer load failed:", err);
+      setPaymentData(payment || null);
+      setAuditRows(normalizeAuditRows(payment));
+      setError(err?.response?.data?.error || "Unable to load full payment details.");
     } finally {
-
       setLoading(false);
     }
   }
 
-  /* =====================================================
-     ACTIVE ROW
-  ===================================================== */
+  const financialSummary = useMemo(() => {
+    const amount = Number(firstValue(row, ["amount", "total_amount"], 0));
+    const refunded = Number(firstValue(row, ["refunded_amount", "refund_amount"], 0));
+    const fee = Number(firstValue(row, ["processing_fee", "stripe_fee", "fee_amount"], 0));
 
-  const row =
-    paymentData ||
-    payment;
-
-  /* =====================================================
-     SUMMARY
-  ===================================================== */
-
-  const financialSummary =
-    useMemo(
-      () => {
-
-        return {
-
-          amount:
-            Number(
-              row?.amount ||
-                0
-            ),
-
-          refunded:
-            Number(
-              row?.refunded_amount ||
-                0
-            ),
-
-          net:
-            Number(
-              row?.amount ||
-                0
-            ) -
-            Number(
-              row?.refunded_amount ||
-                0
-            ),
-
-        };
-
-      },
-      [row]
-    );
-
-  /* =====================================================
-     RESEND RECEIPT
-  ===================================================== */
+    return {
+      amount,
+      refunded,
+      fee,
+      net: Math.max(amount - refunded - fee, 0),
+    };
+  }, [row]);
 
   async function handleResendReceipt() {
-
     try {
+      setSending(true);
+      setError("");
 
-      setSending(
-        true
-      );
+      const id = paymentId(row);
 
-      await api.post(
-        `/receipts/payment/${
-          row.payment_id ||
-          row.id
-        }/resend`
-      );
+      if (!id) {
+        setError("Payment not found.");
+        return;
+      }
 
-      alert(
-        "Receipt resent."
+      await api.post(`/receipts/payment/${id}/resend`).catch(() =>
+        api.post(`/finance/receipts/payment/${id}/resend`)
       );
 
       await loadPayment();
-
     } catch (err) {
-
-      console.error(err);
-
-      alert(
-        err?.response?.data
-          ?.error ||
-          "Failed to resend receipt."
-      );
-
+      console.error("Receipt resend failed:", err);
+      setError(err?.response?.data?.error || "Failed to resend receipt.");
     } finally {
-
-      setSending(
-        false
-      );
+      setSending(false);
     }
   }
 
-  /* =====================================================
-     PDF
-  ===================================================== */
-
   function openReceiptPdf() {
+    const id = receiptId(row);
+    const number = receiptNumber(row);
 
-    if (
-      !row?.receipt_id
-    ) {
+    if (id) {
+      window.open(`/api/receipts/${id}/pdf`, "_blank", "noopener,noreferrer");
       return;
     }
 
-    window.open(
-      `/api/receipts/${row.receipt_id}/pdf`,
-      "_blank"
-    );
+    if (number) {
+      window.open(`/api/receipts/number/${number}/pdf`, "_blank", "noopener,noreferrer");
+    }
   }
 
   function openInvoicePdf() {
+    const id = invoiceId(row);
+    const number = invoiceNumber(row);
 
-    if (
-      !row?.invoice_id
-    ) {
+    if (id) {
+      window.open(`/api/invoices/${id}/pdf`, "_blank", "noopener,noreferrer");
       return;
     }
 
-    window.open(
-      `/api/invoices/${row.invoice_id}/pdf`,
-      "_blank"
-    );
+    if (number) {
+      window.open(`/api/invoices/number/${number}/pdf`, "_blank", "noopener,noreferrer");
+    }
   }
 
-  /* =====================================================
-     CLOSE
-  ===================================================== */
-
-  if (!open) {
-    return null;
-  }
-
-  /* =====================================================
-     UI
-  ===================================================== */
+  if (!open) return null;
 
   return (
-
     <div className="finance-drawer-overlay">
-
-      <div className="finance-drawer finance-drawer-xl">
-
-        {/* =====================================
-            HEADER
-        ===================================== */}
-
+      <aside className="finance-drawer finance-drawer-xl" aria-label="Payment details">
         <div className="finance-drawer-header">
-
           <div>
-
-            <div className="finance-drawer-eyebrow">
-
-              FINANCE PAYMENT
-
-            </div>
-
-            <h2>
-
-              {
-                row?.payment_number ||
-                "Payment"
-              }
-
-            </h2>
-
+            <div className="finance-drawer-eyebrow">FINANCE PAYMENT</div>
+            <h2>{firstValue(row, ["payment_number"], "Payment")}</h2>
             <p>
-
-              Enterprise payment audit,
-              membership coverage,
-              Stripe visibility,
-              invoice linkage,
-              receipt tracking,
-              reconciliation,
-              and financial compliance operations.
-
+              Payment, payer, invoice, receipt, membership coverage,
+              reconciliation, and audit visibility.
             </p>
-
           </div>
 
           <button
             type="button"
             className="finance-drawer-close"
             onClick={onClose}
+            aria-label="Close payment details"
           >
-
-            <X size={18} />
-
+            <X size={18} strokeWidth={2.1} />
           </button>
-
         </div>
-
-        {/* =====================================
-            TOOLBAR
-        ===================================== */}
 
         <div className="finance-toolbar">
-
-          <button
-            type="button"
-            className="finance-btn finance-btn-primary"
-            onClick={
-              openReceiptPdf
-            }
-          >
-
-            <Receipt size={16} />
-
+          <ActionButton onClick={openReceiptPdf} variant="primary" disabled={!receiptId(row) && !receiptNumber(row)}>
+            <Receipt size={16} strokeWidth={2.1} />
             Receipt PDF
+          </ActionButton>
 
-          </button>
-
-          <button
-            type="button"
-            className="finance-btn finance-btn-secondary"
-            onClick={
-              openInvoicePdf
-            }
-          >
-
-            <FileText size={16} />
-
+          <ActionButton onClick={openInvoicePdf} disabled={!invoiceId(row) && !invoiceNumber(row)}>
+            <FileText size={16} strokeWidth={2.1} />
             Invoice PDF
+          </ActionButton>
 
-          </button>
-
-          <button
-            type="button"
-            className="finance-btn finance-btn-secondary"
-            onClick={
-              handleResendReceipt
-            }
-            disabled={
-              sending
-            }
-          >
-
-            <Send size={16} />
-
-            {sending
-              ? "Sending..."
-              : "Resend Receipt"}
-
-          </button>
-
+          <ActionButton onClick={handleResendReceipt} disabled={sending || !paymentId(row)}>
+            <Send size={16} strokeWidth={2.1} />
+            {sending ? "Sending..." : "Resend Receipt"}
+          </ActionButton>
         </div>
 
-        {/* =====================================
-            LOADING
-        ===================================== */}
-
-        {loading ? (
-
-          <div className="finance-loading-card">
-
-            Loading payment...
-
+        {error ? (
+          <div className="finance-alert error">
+            <AlertTriangle size={16} strokeWidth={2.1} />
+            {error}
           </div>
-
         ) : null}
 
-        {/* =====================================
-            CONTENT
-        ===================================== */}
+        {loading ? <div className="finance-loading-card">Loading payment...</div> : null}
 
-        {!loading &&
-        row ? (
-
+        {!loading && row ? (
           <div className="finance-drawer-body">
-
-            {/* =====================================
-                SUMMARY CARDS
-            ===================================== */}
-
             <div className="finance-summary-grid">
-
               <div className="finance-summary-card featured">
-
-                <span>
-                  Payment Amount
-                </span>
-
-                <h3>
-
-                  {money(
-                    financialSummary.amount
-                  )}
-
-                </h3>
-
-                <small>
-                  Gross payment total
-                </small>
-
+                <span>Payment Amount</span>
+                <h3>{money(financialSummary.amount)}</h3>
+                <small>Gross payment total</small>
               </div>
 
               <div className="finance-summary-card">
-
-                <span>
-                  Refunded
-                </span>
-
-                <h3>
-
-                  {money(
-                    financialSummary.refunded
-                  )}
-
-                </h3>
-
-                <small>
-                  Refund adjustments
-                </small>
-
+                <span>Processing Fee</span>
+                <h3>{money(financialSummary.fee)}</h3>
+                <small>Card / ACH fee when available</small>
               </div>
 
               <div className="finance-summary-card">
-
-                <span>
-                  Net Amount
-                </span>
-
-                <h3>
-
-                  {money(
-                    financialSummary.net
-                  )}
-
-                </h3>
-
-                <small>
-                  Net treasury impact
-                </small>
-
+                <span>Net Amount</span>
+                <h3>{money(financialSummary.net)}</h3>
+                <small>Estimated treasury impact</small>
               </div>
 
               <div className="finance-summary-card">
-
-                <span>
-                  Status
-                </span>
-
+                <span>Status</span>
                 <h3>
-
                   <FinanceBadge
-                    label={pretty(
-                      row.status
-                    )}
-                    type={statusTone(
-                      row.status
-                    )}
+                    label={pretty(firstValue(row, ["status", "payment_status"], "paid"))}
+                    type={statusTone(firstValue(row, ["status", "payment_status"], "paid"))}
                   />
-
                 </h3>
-
-                <small>
-                  Payment lifecycle
-                </small>
-
+                <small>Payment lifecycle</small>
               </div>
-
             </div>
 
-            {/* =====================================
-                MAIN GRID
-            ===================================== */}
-
             <div className="finance-detail-grid">
-
-              {/* =====================================
-                  LEFT
-              ===================================== */}
-
               <div className="finance-detail-column">
-
-                {/* PAYMENT */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <CreditCard
-                        size={18}
-                      />
-
+                      <CreditCard size={18} strokeWidth={2.1} />
                       Payment Details
-
                     </h3>
-
                   </div>
 
                   <div className="finance-detail-list">
-
-                    <DetailItem
-                      label="Payment #"
-                      value={
-                        row.payment_number
-                      }
-                    />
-
+                    <DetailItem label="Payment #" value={firstValue(row, ["payment_number"])} />
                     <DetailItem
                       label="Category"
-                      value={categoryLabel(
-                        row.category ||
-                          row.payment_type
-                      )}
+                      value={categoryLabel(firstValue(row, ["category", "payment_type"], ""))}
                     />
-
                     <DetailItem
                       label="Details"
-                      value={
-                        row.sub_category ||
-                        row.plan_name ||
-                        row.program_title ||
-                        row.description ||
-                        row.donation_category
-                      }
+                      value={firstValue(row, [
+                        "sub_category",
+                        "plan_name",
+                        "program_name",
+                        "program_title",
+                        "description",
+                        "donation_category",
+                      ])}
                     />
-
-                    <DetailItem
-                      label="Method"
-                      value={pretty(
-                        row.method
-                      )}
-                    />
-
-                    <DetailItem
-                      label="Provider"
-                      value={paymentSource(
-                        row.provider
-                      )}
-                    />
-
-                    <DetailItem
-                      label="Reference #"
-                      value={
-                        row.reference_no
-                      }
-                    />
-
+                    <DetailItem label="Method" value={pretty(firstValue(row, ["payment_method", "method"], ""))} />
+                    <DetailItem label="Provider" value={paymentSource(firstValue(row, ["provider"], ""))} />
+                    <DetailItem label="Reference #" value={firstValue(row, ["reference_no", "reference_number"])} />
                     <DetailItem
                       label="Stripe Payment"
-                      value={
-                        row.stripe_payment_intent
-                      }
+                      value={firstValue(row, ["stripe_payment_intent_id", "stripe_payment_intent"])}
                     />
-
-                    <DetailItem
-                      label="Stripe Invoice"
-                      value={
-                        row.stripe_invoice_id
-                      }
-                    />
-
-                    <DetailItem
-                      label="Created"
-                      value={formatDate(
-                        row.created_at
-                      )}
-                    />
-
+                    <DetailItem label="Stripe Charge" value={firstValue(row, ["stripe_charge_id", "charge_id"])} />
+                    <DetailItem label="Created" value={formatDate(firstValue(row, ["created_at"], ""))} />
                     <DetailItem
                       label="Paid Date"
-                      value={formatDate(
-                        row.payment_date ||
-                          row.paid_at
-                      )}
+                      value={formatDate(firstValue(row, ["payment_date", "paid_at", "received_at"], ""))}
                     />
-
                   </div>
+                </section>
 
-                </div>
-
-                {/* COVERAGE */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <Calendar
-                        size={18}
-                      />
-
+                      <Calendar size={18} strokeWidth={2.1} />
                       Membership Coverage
-
                     </h3>
-
                   </div>
 
-                  <CoverageDisplay
-                    row={row}
-                    showMonths
-                    large
-                  />
+                  <CoverageDisplay row={row} showMonths large />
+                </section>
 
-                </div>
-
-                {/* RECONCILIATION */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <RefreshCcw
-                        size={18}
-                      />
-
+                      <RefreshCcw size={18} strokeWidth={2.1} />
                       Reconciliation
-
                     </h3>
-
                   </div>
 
                   <div className="finance-detail-list">
-
                     <DetailItem
-                      label="Reconciliation Status"
+                      label="Status"
                       value={
                         <FinanceBadge
-                          label={pretty(
-                            row.reconciliation_status ||
-                              "pending"
-                          )}
+                          label={pretty(firstValue(row, ["reconciliation_status"], "pending"))}
                           type={
-                            String(
-                              row.reconciliation_status ||
-                                ""
-                            ).toLowerCase() ===
-                            "matched"
+                            String(firstValue(row, ["reconciliation_status"], "")).toLowerCase() === "matched"
                               ? "success"
                               : "warning"
                           }
                         />
                       }
                     />
-
-                    <DetailItem
-                      label="Matched Batch"
-                      value={
-                        row.reconciliation_batch
-                      }
-                    />
-
-                    <DetailItem
-                      label="Matched At"
-                      value={formatDate(
-                        row.reconciled_at
-                      )}
-                    />
-
+                    <DetailItem label="Batch" value={firstValue(row, ["reconciliation_batch", "batch_number"])} />
+                    <DetailItem label="Matched At" value={formatDate(firstValue(row, ["reconciled_at"], ""))} />
                   </div>
-
-                </div>
-
+                </section>
               </div>
 
-              {/* =====================================
-                  RIGHT
-              ===================================== */}
-
               <div className="finance-detail-column">
-
-                {/* MEMBER */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <User
-                        size={18}
-                      />
-
+                      <User size={18} strokeWidth={2.1} />
                       Member / Payer
-
                     </h3>
-
                   </div>
 
                   <div className="finance-detail-list">
-
                     <DetailItem
                       label="Full Name"
-                      value={
-                        row.full_name ||
-                        row.full_name_snapshot ||
-                        row.guest_name
-                      }
+                      value={firstValue(row, [
+                        "full_name_snapshot",
+                        "full_name",
+                        "payer_name",
+                        "guest_name",
+                        "donor_name",
+                      ])}
                     />
-
-                    <DetailItem
-                      label="Member #"
-                      value={
-                        row.member_no
-                      }
-                    />
-
+                    <DetailItem label="Member #" value={firstValue(row, ["member_no", "member_number"])} />
                     <DetailItem
                       label="Email"
-                      value={
-                        row.email ||
-                        row.email_snapshot
-                      }
+                      value={firstValue(row, ["email_snapshot", "email", "payer_email", "guest_email"])}
                     />
-
                     <DetailItem
                       label="Phone"
-                      value={
-                        row.phone ||
-                        row.phone_snapshot
-                      }
+                      value={firstValue(row, ["phone_snapshot", "phone", "payer_phone", "guest_phone"])}
                     />
-
                   </div>
+                </section>
 
-                </div>
-
-                {/* RECEIPT + INVOICE */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <Receipt
-                        size={18}
-                      />
-
+                      <Receipt size={18} strokeWidth={2.1} />
                       Receipt / Invoice
-
                     </h3>
-
                   </div>
 
                   <div className="finance-detail-list">
-
-                    <DetailItem
-                      label="Receipt #"
-                      value={
-                        row.receipt_number
-                      }
-                    />
-
-                    <DetailItem
-                      label="Invoice #"
-                      value={
-                        row.invoice_number
-                      }
-                    />
-
+                    <DetailItem label="Receipt #" value={receiptNumber(row)} />
+                    <DetailItem label="Invoice #" value={invoiceNumber(row)} />
                     <DetailItem
                       label="Receipt Email"
                       value={
                         <FinanceBadge
-                          label={pretty(
-                            row.email_status ||
-                              "pending"
-                          )}
-                          type={statusTone(
-                            row.email_status
-                          )}
+                          label={pretty(firstValue(row, ["email_status", "receipt_email_status"], "pending"))}
+                          type={statusTone(firstValue(row, ["email_status", "receipt_email_status"], "pending"))}
                         />
                       }
                     />
-
-                    <DetailItem
-                      label="Emailed At"
-                      value={formatDate(
-                        row.emailed_at
-                      )}
-                    />
-
-                    <DetailItem
-                      label="Email Error"
-                      value={
-                        row.email_error
-                      }
-                    />
-
+                    <DetailItem label="Emailed At" value={formatDate(firstValue(row, ["emailed_at", "sent_at"], ""))} />
+                    <DetailItem label="Email Error" value={firstValue(row, ["email_error", "email_last_error"])} wide />
                   </div>
+                </section>
 
-                </div>
-
-                {/* CARD */}
-
-                <div className="finance-card">
-
+                <section className="finance-card">
                   <div className="finance-card-header">
-
                     <h3>
-
-                      <Wallet
-                        size={18}
-                      />
-
-                      Card Information
-
+                      <Wallet size={18} strokeWidth={2.1} />
+                      Card / ACH Information
                     </h3>
-
                   </div>
 
                   <div className="finance-detail-list">
-
-                    <DetailItem
-                      label="Card"
-                      value={cardDisplay(
-                        row
-                      )}
-                    />
-
-                    <DetailItem
-                      label="Brand"
-                      value={
-                        row.card_brand
-                      }
-                    />
-
-                    <DetailItem
-                      label="Last 4"
-                      value={
-                        row.card_last4
-                      }
-                    />
-
+                    <DetailItem label="Display" value={cardDisplay(row)} />
+                    <DetailItem label="Brand" value={firstValue(row, ["card_brand", "bank_name"])} />
+                    <DetailItem label="Last 4" value={firstValue(row, ["card_last4", "bank_last4"])} />
                     <DetailItem
                       label="Expiry"
-                      value={
-                        row.card_expiry
-                      }
+                      value={firstValue(row, ["card_expiry"], row?.card_exp_month && row?.card_exp_year ? `${row.card_exp_month}/${row.card_exp_year}` : "--")}
                     />
-
                   </div>
+                </section>
 
-                </div>
+                <section className="finance-card">
+                  <FinancePaymentAuditTimeline rows={auditRows} />
+                </section>
 
-                {/* TIMELINE */}
-
-                <div className="finance-card">
-
-                  <div className="finance-card-header">
-
-                    <h3>
-
-                      <Clock3
-                        size={18}
-                      />
-
-                      Timeline
-
-                    </h3>
-
-                  </div>
-
-                  <div className="finance-timeline">
-
-                    <div className="finance-timeline-item">
-
-                      <span>
-                        Payment Created
-                      </span>
-
-                      <strong>
-
-                        {formatDate(
-                          row.created_at
-                        )}
-
-                      </strong>
-
-                    </div>
-
-                    <div className="finance-timeline-item">
-
-                      <span>
-                        Payment Posted
-                      </span>
-
-                      <strong>
-
-                        {formatDate(
-                          row.payment_date
-                        )}
-
-                      </strong>
-
-                    </div>
-
-                    <div className="finance-timeline-item">
-
-                      <span>
-                        Receipt Sent
-                      </span>
-
-                      <strong>
-
-                        {formatDate(
-                          row.emailed_at
-                        )}
-
-                      </strong>
-
-                    </div>
-
-                  </div>
-
-                </div>
-
-                {/* NOTES */}
-
-                {row.notes ? (
-
-                  <div className="finance-card">
-
+                {firstValue(row, ["notes"], "") ? (
+                  <section className="finance-card">
                     <div className="finance-card-header">
-
                       <h3>
-
-                        <BadgeDollarSign
-                          size={18}
-                        />
-
+                        <BadgeDollarSign size={18} strokeWidth={2.1} />
                         Notes
-
                       </h3>
-
                     </div>
 
-                    <div className="finance-notes-box">
-
-                      {row.notes}
-
-                    </div>
-
-                  </div>
-
+                    <div className="finance-notes-box">{row.notes}</div>
+                  </section>
                 ) : null}
-
               </div>
-
             </div>
-
-            {/* =====================================
-                FOOTER
-            ===================================== */}
 
             <div className="finance-drawer-footer">
+              <ActionButton onClick={onClose}>Close</ActionButton>
 
-              <button
-                type="button"
-                className="finance-btn finance-btn-secondary"
-                onClick={
-                  onClose
-                }
-              >
-
-                Close
-
-              </button>
-
-              <button
-                type="button"
-                className="finance-btn finance-btn-primary"
-                onClick={
-                  openReceiptPdf
-                }
-              >
-
-                <Download
-                  size={16}
-                />
-
+              <ActionButton onClick={openReceiptPdf} variant="primary" disabled={!receiptId(row) && !receiptNumber(row)}>
+                <Download size={16} strokeWidth={2.1} />
                 Receipt PDF
+              </ActionButton>
 
-              </button>
+              <ActionButton onClick={handleResendReceipt} disabled={sending || !paymentId(row)}>
+                <Mail size={16} strokeWidth={2.1} />
+                Email Receipt
+              </ActionButton>
 
+              <ActionButton onClick={loadPayment} disabled={loading}>
+                <CheckCircle2 size={16} strokeWidth={2.1} />
+                Refresh
+              </ActionButton>
             </div>
-
           </div>
-
         ) : null}
-
-      </div>
-
+      </aside>
     </div>
   );
 }

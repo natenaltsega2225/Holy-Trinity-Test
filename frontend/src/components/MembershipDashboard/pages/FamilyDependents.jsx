@@ -1,810 +1,782 @@
- // frontend/src/components/MembershipDashoard/pages/FamilyDependents.jsx
 
-import React, { useEffect, useMemo, useRef, useState } from "react";
+// frontend/src/components/MembershipDashoard/pages/FamilyDependents.jsx
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CalendarDays,
+  Edit3,
+  Mail,
+  Phone,
+  Plus,
+  RefreshCcw,
+  Save,
+  Trash2,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
+
 import api from "../../api";
-import MemberPageHeader from "../components/MemberPageHeader";
-import MemberEmptyState from "../components/MemberEmptyState";
-import MemberStatusBadge from "../components/MemberStatusBadge";
 import "../../../styles/member-dashboard.css";
-const RELATIONSHIP_OPTIONS = [
-  { value: "", label: "Select relationship" },
-  { value: "spouse", label: "Spouse", icon: "💍" },
-  { value: "child", label: "Child", icon: "🧒" },
-  { value: "father", label: "Father", icon: "👨" },
-  { value: "mother", label: "Mother", icon: "👩" },
-  { value: "brother", label: "Brother", icon: "👦" },
-  { value: "sister", label: "Sister", icon: "👧" },
-  { value: "grandparent", label: "Grandparent", icon: "🧓" },
-  { value: "other", label: "Other", icon: "👥" },
+
+const LIST_ENDPOINTS = [
+  "/membership/family",
+  "/membership/me/family",
+  "/member/family",
+  "/members/me/family",
+  "/membership/dependents",
+  "/members/me/dependents",
 ];
 
-const RELATIONSHIP_ICON_MAP = RELATIONSHIP_OPTIONS.reduce((acc, item) => {
-  acc[item.value] = item.icon;
-  return acc;
-}, {});
+const CREATE_ENDPOINTS = [
+  "/membership/dependents",
+  "/membership/me/dependents",
+  "/member/dependents",
+  "/members/me/dependents",
+];
 
-const emptyDependent = {
+const RELATIONSHIP_OPTIONS = [
+  "Child",
+  "Spouse",
+  "Parent",
+  "Sibling",
+  "Other",
+];
+
+const GENDER_OPTIONS = [
+  "Female",
+  "Male",
+  "Other",
+  "Prefer not to say",
+];
+
+const EMPTY_FORM = {
+  id: "",
   first_name: "",
   last_name: "",
-  relationship: "",
-  custom_relationship: "",
-  dependent_type: "dependent",
+  relationship: "Child",
   gender: "",
   date_of_birth: "",
+  school_grade: "",
   email: "",
   phone: "",
-  is_student: 0,
-  is_disabled: 0,
-  is_active: 1,
-  status: "active",
   notes: "",
 };
 
-function validateName(value) {
-  return /^[A-Za-z][A-Za-z\s'-]{0,99}$/.test(String(value || "").trim());
+function clean(value, fallback = "--") {
+  const text = value == null ? "" : String(value).trim();
+  return text || fallback;
 }
 
-function validateCustomRelationship(value) {
-  return /^[A-Za-z][A-Za-z\s/&'-]{1,49}$/.test(String(value || "").trim());
+function arrayFromPayload(payload) {
+  if (Array.isArray(payload)) return payload;
+  if (Array.isArray(payload?.dependents)) return payload.dependents;
+  if (Array.isArray(payload?.rows)) return payload.rows;
+  if (Array.isArray(payload?.data)) return payload.data;
+  if (Array.isArray(payload?.items)) return payload.items;
+  if (Array.isArray(payload?.family)) return payload.family;
+  return [];
 }
 
-function validateEmail(value) {
-  if (!value) return true;
-  return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(String(value).trim());
+function normalizePayload(payload) {
+  const rows = arrayFromPayload(payload).map((row) => ({
+    ...row,
+    id: row.id || row.dependent_id || row.member_dependent_id || "",
+    first_name: row.first_name || row.firstName || "",
+    last_name: row.last_name || row.lastName || "",
+    full_name:
+      row.full_name ||
+      row.name ||
+      [row.first_name || row.firstName, row.last_name || row.lastName]
+        .filter(Boolean)
+        .join(" "),
+    relationship: row.relationship || row.relation || "Child",
+    gender: row.gender || "",
+    date_of_birth: row.date_of_birth || row.dob || "",
+    school_grade: row.school_grade || row.grade || row.school || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    status: row.status || row.dependent_status || "active",
+    notes: row.notes || "",
+    created_at: row.created_at || row.createdAt || "",
+  }));
+
+  return {
+    rows,
+    member:
+      payload?.member ||
+      payload?.profile ||
+      payload?.summary?.member ||
+      payload?.data?.member ||
+      {},
+  };
 }
 
-function validatePhone(value) {
-  if (!value) return true;
-  return /^[0-9+\-().\s]{7,25}$/.test(String(value).trim());
+async function requestFirstAvailable(endpoints, options = {}) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const response =
+        options.method === "post"
+          ? await api.post(endpoint, options.data || {})
+          : options.method === "put"
+            ? await api.put(endpoint, options.data || {})
+            : options.method === "patch"
+              ? await api.patch(endpoint, options.data || {})
+              : options.method === "delete"
+                ? await api.delete(endpoint)
+                : await api.get(endpoint, options.config || {});
+
+      return {
+        endpoint,
+        data: response?.data,
+      };
+    } catch (error) {
+      lastError = error;
+
+      const status = error?.response?.status;
+      if (![404, 405].includes(Number(status))) {
+        throw error;
+      }
+    }
+  }
+
+  throw lastError || new Error("No available family endpoint.");
 }
 
-function getAge(dateValue) {
-  if (!dateValue) return null;
-  const dob = new Date(dateValue);
-  if (Number.isNaN(dob.getTime())) return null;
+function formatDate(value) {
+  if (!value) return "--";
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return clean(value);
+  return date.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function yearsOld(value) {
+  if (!value) return "--";
+  const dob = new Date(value);
+  if (Number.isNaN(dob.getTime())) return "--";
 
   const today = new Date();
   let age = today.getFullYear() - dob.getFullYear();
-  const monthDiff = today.getMonth() - dob.getMonth();
+  const monthDelta = today.getMonth() - dob.getMonth();
 
-  if (
-    monthDiff < 0 ||
-    (monthDiff === 0 && today.getDate() < dob.getDate())
-  ) {
+  if (monthDelta < 0 || (monthDelta === 0 && today.getDate() < dob.getDate())) {
     age -= 1;
   }
 
-  return age >= 0 ? age : null;
+  return age >= 0 ? `${age}` : "--";
 }
 
-function formatDateMMDDYY(value) {
-  if (!value) return "--";
-  const d = new Date(value);
-  if (Number.isNaN(d.getTime())) return "--";
-
-  return new Intl.DateTimeFormat("en-US", {
-    month: "2-digit",
-    day: "2-digit",
-    year: "2-digit",
-    timeZone: "UTC",
-  }).format(d);
-}
-
-function formatRelationshipLabel(value, customValue = "") {
-  if (!value) return "--";
-  if (value === "other") {
-    return customValue ? customValue : "Other";
-  }
-  const match = RELATIONSHIP_OPTIONS.find((item) => item.value === value);
-  return match?.label || value;
-}
-
-function relationshipIcon(value) {
-  return RELATIONSHIP_ICON_MAP[value] || "👥";
-}
-
-function resolveDependentTypeFromRelationship(value) {
-  if (value === "spouse") return "spouse";
-  if (value === "child") return "child";
-  if (value === "father" || value === "mother" || value === "grandparent") {
-    return "parent";
-  }
-  return "dependent";
-}
-
-function validateDependentForm(form) {
-  const errors = {};
-
-  if (!String(form.first_name || "").trim()) {
-    errors.first_name = "First name is required.";
-  } else if (!validateName(form.first_name)) {
-    errors.first_name =
-      "First name must contain letters only. Spaces, apostrophes, and hyphens are allowed.";
-  }
-
-  if (!String(form.last_name || "").trim()) {
-    errors.last_name = "Last name is required.";
-  } else if (!validateName(form.last_name)) {
-    errors.last_name =
-      "Last name must contain letters only. Spaces, apostrophes, and hyphens are allowed.";
-  }
-
-  if (!String(form.relationship || "").trim()) {
-    errors.relationship = "Relationship is required.";
-  } else if (
-    !RELATIONSHIP_OPTIONS.map((item) => item.value).includes(form.relationship)
-  ) {
-    errors.relationship = "Select a valid relationship.";
-  }
-
-  if (form.relationship === "other") {
-    if (!String(form.custom_relationship || "").trim()) {
-      errors.custom_relationship = "Custom relationship is required.";
-    } else if (!validateCustomRelationship(form.custom_relationship)) {
-      errors.custom_relationship =
-        "Custom relationship must contain letters only.";
-    }
-  }
-
-  if (!form.date_of_birth) {
-    errors.date_of_birth = "Date of birth is required.";
-  } else {
-    const age = getAge(form.date_of_birth);
-    if (age === null) {
-      errors.date_of_birth = "Date of birth is invalid.";
-    } else if (age > 120) {
-      errors.date_of_birth = "Age appears invalid.";
-    }
-  }
-
-  if (form.email && !validateEmail(form.email)) {
-    errors.email = "Enter a valid email address.";
-  }
-
-  if (form.phone && !validatePhone(form.phone)) {
-    errors.phone = "Enter a valid phone number.";
-  }
-
-  return errors;
-}
-
-function ErrorText({ text }) {
-  if (!text) return null;
-  return <div className="member-form-error">{text}</div>;
-}
-
-function RequiredLabel({ children }) {
-  return (
-    <label className="member-summary-label">
-      {children} <span className="member-required">*</span>
-    </label>
+function dependentName(row) {
+  return clean(
+    row.full_name ||
+      [row.first_name, row.last_name].filter(Boolean).join(" "),
+    "Dependent"
   );
 }
 
-function ModalShell({ open, title, onClose, children, maxWidth = 900 }) {
-  if (!open) return null;
-
-  return (
-    <div className="member-modal-overlay" onClick={onClose}>
-      <div
-        className="member-modal-card"
-        style={{ maxWidth }}
-        onClick={(e) => e.stopPropagation()}
-      >
-        <div className="member-modal-head">
-          <h3 className="member-modal-title">{title}</h3>
-          <button
-            type="button"
-            className="member-btn member-btn-secondary"
-            onClick={onClose}
-          >
-            Close
-          </button>
-        </div>
-        {children}
-      </div>
-    </div>
-  );
+function statusClass(status) {
+  const value = String(status || "").toLowerCase();
+  if (["active", "approved"].includes(value)) return "member-badge-success";
+  if (["inactive", "removed", "deleted"].includes(value)) return "member-badge-neutral";
+  if (["pending"].includes(value)) return "member-badge-warning";
+  return "member-badge-neutral";
 }
 
-function RelationshipBadge({ relationship, customRelationship }) {
-  const label = formatRelationshipLabel(relationship, customRelationship);
-  const icon = relationshipIcon(relationship);
-
-  return (
-    <span className="member-relationship-badge">
-      <span aria-hidden>{icon}</span>
-      <span>{label}</span>
-    </span>
-  );
-}
-
-function AgeBadge({ age }) {
-  return <span className="member-age-badge">{age ?? "--"}</span>;
-}
-
-function FamilySummaryGrid({ items }) {
-  return (
-    <section className="member-family-summary-grid">
-      {items.map((item, index) => (
-        <article
-          key={`${item.label}-${index}`}
-          className={`member-family-stat-card ${item.featured ? "is-featured" : ""}`}
-        >
-          <div className="member-family-stat-label">{item.label}</div>
-          <div className="member-family-stat-value">{item.value}</div>
-          <div className="member-family-stat-sub">{item.sub}</div>
-        </article>
-      ))}
-    </section>
-  );
-}
-
-function RowActionsMenu({ row, onEdit, onDelete }) {
-  const [open, setOpen] = useState(false);
-  const menuRef = useRef(null);
-
-  useEffect(() => {
-    if (!open) return undefined;
-
-    function handleOutside(event) {
-      if (!menuRef.current?.contains(event.target)) {
-        setOpen(false);
-      }
-    }
-
-    function handleEscape(event) {
-      if (event.key === "Escape") {
-        setOpen(false);
-      }
-    }
-
-    document.addEventListener("mousedown", handleOutside);
-    document.addEventListener("keydown", handleEscape);
-
-    return () => {
-      document.removeEventListener("mousedown", handleOutside);
-      document.removeEventListener("keydown", handleEscape);
-    };
-  }, [open]);
-
-  return (
-    <div className="member-row-menu" ref={menuRef}>
-      <button
-        type="button"
-        className="member-kebab-btn"
-        aria-label="Open actions"
-        aria-expanded={open}
-        onClick={() => setOpen((prev) => !prev)}
-      >
-        ⋯
-      </button>
-
-      {open ? (
-        <div className="member-kebab-menu">
-          <button
-            type="button"
-            onClick={() => {
-              setOpen(false);
-              onEdit(row);
-            }}
-          >
-            Edit
-          </button>
-          <button
-            type="button"
-            className="member-kebab-menu-danger"
-            onClick={() => {
-              setOpen(false);
-              onDelete(row.id);
-            }}
-          >
-            Delete
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function DependentFormModal({
-  open,
-  onClose,
-  form,
-  setForm,
-  errors,
-  onSave,
-  saving,
-  editingDependentId,
-}) {
-  return (
-    <ModalShell
-      open={open}
-      onClose={onClose}
-      title={editingDependentId ? "Edit Family Member" : "Add Family Member"}
-    >
-      <div className="member-form-grid">
-        <div>
-          <RequiredLabel>First Name</RequiredLabel>
-          <input
-            className="member-input"
-            placeholder="Enter first name"
-            value={form.first_name}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, first_name: e.target.value }))
-            }
-          />
-          <ErrorText text={errors.first_name} />
-        </div>
-
-        <div>
-          <RequiredLabel>Last Name</RequiredLabel>
-          <input
-            className="member-input"
-            placeholder="Enter last name"
-            value={form.last_name}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, last_name: e.target.value }))
-            }
-          />
-          <ErrorText text={errors.last_name} />
-        </div>
-
-        <div>
-          <RequiredLabel>Relationship</RequiredLabel>
-          <select
-            className="member-select"
-            value={form.relationship}
-            onChange={(e) => {
-              const value = e.target.value;
-              setForm((prev) => ({
-                ...prev,
-                relationship: value,
-                dependent_type: resolveDependentTypeFromRelationship(value),
-                custom_relationship:
-                  value === "other" ? prev.custom_relationship : "",
-              }));
-            }}
-          >
-            {RELATIONSHIP_OPTIONS.map((opt) => (
-              <option key={opt.value} value={opt.value}>
-                {opt.label}
-              </option>
-            ))}
-          </select>
-          <ErrorText text={errors.relationship} />
-        </div>
-
-        <div>
-          <label className="member-summary-label">Type</label>
-          <input
-            className="member-input"
-            value={
-              form.dependent_type
-                ? String(form.dependent_type).replaceAll("_", " ")
-                : "--"
-            }
-            disabled
-          />
-        </div>
-
-        {form.relationship === "other" ? (
-          <div>
-            <RequiredLabel>Custom Relationship</RequiredLabel>
-            <input
-              className="member-input"
-              placeholder="Enter custom relationship"
-              value={form.custom_relationship}
-              onChange={(e) =>
-                setForm((prev) => ({
-                  ...prev,
-                  custom_relationship: e.target.value,
-                }))
-              }
-            />
-            <ErrorText text={errors.custom_relationship} />
-          </div>
-        ) : null}
-
-        <div>
-          <RequiredLabel>Date of Birth</RequiredLabel>
-          <input
-            className="member-input"
-            type="date"
-            value={form.date_of_birth}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, date_of_birth: e.target.value }))
-            }
-          />
-          <ErrorText text={errors.date_of_birth} />
-        </div>
-
-        <div>
-          <label className="member-summary-label">Email</label>
-          <input
-            className="member-input"
-            placeholder="Enter email (optional)"
-            value={form.email}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, email: e.target.value }))
-            }
-          />
-          <ErrorText text={errors.email} />
-        </div>
-
-        <div>
-          <label className="member-summary-label">Phone</label>
-          <input
-            className="member-input"
-            placeholder="Enter phone number (optional)"
-            value={form.phone}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, phone: e.target.value }))
-            }
-          />
-          <ErrorText text={errors.phone} />
-        </div>
-
-        <div>
-          <label className="member-summary-label">Status</label>
-          <select
-            className="member-select"
-            value={form.status}
-            onChange={(e) =>
-              setForm((prev) => ({ ...prev, status: e.target.value }))
-            }
-          >
-            <option value="active">Active</option>
-            <option value="inactive">Inactive</option>
-            <option value="archived">Archived</option>
-          </select>
-        </div>
-      </div>
-
-      <div className="member-form-actions">
-        <button
-          type="button"
-          className="member-btn member-btn-secondary"
-          onClick={onClose}
-        >
-          Cancel
-        </button>
-        <button
-          type="button"
-          className="member-btn member-btn-primary"
-          disabled={saving}
-          onClick={onSave}
-        >
-          {saving
-            ? "Saving..."
-            : editingDependentId
-            ? "Update Family Member"
-            : "Save Family Member"}
-        </button>
-      </div>
-    </ModalShell>
-  );
+function toForm(row = {}) {
+  return {
+    id: row.id || row.dependent_id || "",
+    first_name: row.first_name || "",
+    last_name: row.last_name || "",
+    relationship: row.relationship || "Child",
+    gender: row.gender || "",
+    date_of_birth: row.date_of_birth ? String(row.date_of_birth).slice(0, 10) : "",
+    school_grade: row.school_grade || "",
+    email: row.email || "",
+    phone: row.phone || "",
+    notes: row.notes || "",
+  };
 }
 
 export default function FamilyDependents() {
   const [rows, setRows] = useState([]);
-  const [summary, setSummary] = useState({
-    total_independent_members: 1,
-    total_dependents: 0,
-    total_members: 1,
-  });
-  const [search, setSearch] = useState("");
+  const [member, setMember] = useState({});
   const [loading, setLoading] = useState(true);
-  const [banner, setBanner] = useState({ type: "", text: "" });
-  const [form, setForm] = useState(emptyDependent);
-  const [errors, setErrors] = useState({});
   const [saving, setSaving] = useState(false);
-  const [editingDependentId, setEditingDependentId] = useState(null);
-  const [showFormModal, setShowFormModal] = useState(false);
+  const [actionLoading, setActionLoading] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
+  const [search, setSearch] = useState("");
+  const [relationship, setRelationship] = useState("all");
+  const [showModal, setShowModal] = useState(false);
+  const [form, setForm] = useState(EMPTY_FORM);
 
-  async function loadData() {
+  const load = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
     try {
-      setLoading(true);
-      setBanner({ type: "", text: "" });
-
-      const { data } = await api.get("/members/me/dependents");
-      setRows(Array.isArray(data?.rows) ? data.rows : []);
-      setSummary(
-        data?.summary || {
-          total_independent_members: 1,
-          total_dependents: 0,
-          total_members: 1,
-        }
-      );
+      const result = await requestFirstAvailable(LIST_ENDPOINTS);
+      const normalized = normalizePayload(result.data);
+      setRows(normalized.rows);
+      setMember(normalized.member || {});
     } catch (err) {
-      console.error(err);
-      setBanner({
-        type: "error",
-        text: err?.response?.data?.error || "Failed to load family records.",
-      });
+      console.error("Unable to load family dependents:", err);
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          "Unable to load family dependents."
+      );
     } finally {
       setLoading(false);
     }
-  }
+  }, []);
 
   useEffect(() => {
-    loadData();
-  }, []);
+    load();
+  }, [load]);
 
   const filteredRows = useMemo(() => {
     const q = search.trim().toLowerCase();
-    if (!q) return rows;
 
-    return rows.filter((row) =>
-      [
+    return rows.filter((row) => {
+      const matchesRelationship =
+        relationship === "all" ||
+        String(row.relationship || "").toLowerCase() === relationship;
+
+      const haystack = [
         row.full_name,
-        formatRelationshipLabel(row.relationship, row.custom_relationship),
-        row.dependent_type,
+        row.first_name,
+        row.last_name,
+        row.relationship,
+        row.gender,
         row.email,
         row.phone,
-        row.status,
+        row.school_grade,
+        row.notes,
       ]
         .filter(Boolean)
-        .some((value) => String(value).toLowerCase().includes(q))
-    );
-  }, [rows, search]);
+        .join(" ")
+        .toLowerCase();
 
-  const summaryItems = useMemo(
-    () => [
-      {
-        label: "Independent Members",
-        value: summary.total_independent_members || 1,
-        sub: "Primary member record",
-        featured: true,
-      },
-      {
-        label: "Dependents",
-        value: summary.total_dependents || 0,
-        sub: "Active dependent records",
-      },
-      {
-        label: "Total Members",
-        value: summary.total_members || 1,
-        sub: "Independent + dependents",
-      },
-      {
-        label: "Children",
-        value: rows.filter((row) => row.relationship === "child").length,
-        sub: "Household children",
-      },
-    ],
-    [summary, rows]
-  );
-
-  function resetForm() {
-    setEditingDependentId(null);
-    setForm(emptyDependent);
-    setErrors({});
-  }
-
-  function openAddModal() {
-    resetForm();
-    setShowFormModal(true);
-  }
-
-  function openEditModal(row) {
-    setEditingDependentId(row.id);
-    setForm({
-      first_name: row.first_name || "",
-      last_name: row.last_name || "",
-      relationship: row.relationship || "",
-      custom_relationship: row.custom_relationship || "",
-      dependent_type: row.dependent_type || "dependent",
-      gender: row.gender || "",
-      date_of_birth: row.date_of_birth || "",
-      email: row.email || "",
-      phone: row.phone || "",
-      is_student: Number(row.is_student || 0),
-      is_disabled: Number(row.is_disabled || 0),
-      is_active: Number(row.is_active ?? 1),
-      status: row.status || "active",
-      notes: row.notes || "",
+      return matchesRelationship && (!q || haystack.includes(q));
     });
-    setErrors({});
-    setShowFormModal(true);
+  }, [rows, search, relationship]);
+
+  const activeCount = rows.filter(
+    (row) => String(row.status || "active").toLowerCase() === "active"
+  ).length;
+
+  const childCount = rows.filter(
+    (row) => String(row.relationship || "").toLowerCase() === "child"
+  ).length;
+
+  const hasEmailCount = rows.filter((row) => row.email).length;
+
+  function openCreate() {
+    setForm(EMPTY_FORM);
+    setError("");
+    setSuccess("");
+    setShowModal(true);
   }
 
-  async function handleSave() {
-    const nextErrors = validateDependentForm(form);
-    setErrors(nextErrors);
+  function openEdit(row) {
+    setForm(toForm(row));
+    setError("");
+    setSuccess("");
+    setShowModal(true);
+  }
 
-    if (Object.keys(nextErrors).length) return;
+  function closeModal() {
+    if (saving) return;
+    setShowModal(false);
+    setForm(EMPTY_FORM);
+  }
+
+  function updateForm(field, value) {
+    setForm((current) => ({
+      ...current,
+      [field]: value,
+    }));
+  }
+
+  function validateForm() {
+    if (!form.first_name.trim()) return "First name is required.";
+    if (!form.last_name.trim()) return "Last name is required.";
+    if (!form.relationship.trim()) return "Relationship is required.";
+    return "";
+  }
+
+  async function saveDependent(event) {
+    event.preventDefault();
+
+    const validationError = validateForm();
+    if (validationError) {
+      setError(validationError);
+      return;
+    }
+
+    setSaving(true);
+    setError("");
+    setSuccess("");
 
     const payload = {
-      ...form,
+      first_name: form.first_name.trim(),
+      last_name: form.last_name.trim(),
       relationship: form.relationship,
-      custom_relationship:
-        form.relationship === "other"
-          ? String(form.custom_relationship || "").trim()
-          : "",
-      dependent_type: resolveDependentTypeFromRelationship(form.relationship),
-      email: form.email || "",
-      phone: form.phone || "",
+      gender: form.gender || null,
+      date_of_birth: form.date_of_birth || null,
+      school_grade: form.school_grade.trim() || null,
+      email: form.email.trim() || null,
+      phone: form.phone.trim() || null,
+      notes: form.notes.trim() || null,
     };
 
     try {
-      setSaving(true);
-      setBanner({ type: "", text: "" });
-
-      if (editingDependentId) {
-        const { data } = await api.put(
-          `/members/me/dependents/${editingDependentId}`,
-          payload
+      if (form.id) {
+        const id = encodeURIComponent(form.id);
+        await requestFirstAvailable(
+          [
+            `/membership/dependents/${id}`,
+            `/membership/me/dependents/${id}`,
+            `/member/dependents/${id}`,
+            `/members/me/dependents/${id}`,
+          ],
+          {
+            method: "put",
+            data: payload,
+          }
         );
-        setBanner({
-          type: "success",
-          text: data?.message || "Dependent updated successfully.",
-        });
+        setSuccess("Dependent updated successfully.");
       } else {
-        const { data } = await api.post("/members/me/dependents", payload);
-        setBanner({
-          type: "success",
-          text: data?.message || "Dependent added successfully.",
+        await requestFirstAvailable(CREATE_ENDPOINTS, {
+          method: "post",
+          data: payload,
         });
+        setSuccess("Dependent added successfully.");
       }
 
-      setShowFormModal(false);
-      resetForm();
-      await loadData();
+      setShowModal(false);
+      setForm(EMPTY_FORM);
+      await load();
     } catch (err) {
-      console.error(err);
-      setBanner({
-        type: "error",
-        text: err?.response?.data?.error || "Failed to save family record.",
-      });
-
-      if (err?.response?.data?.errors) {
-        setErrors(err.response.data.errors);
-      }
+      console.error("Unable to save dependent:", err);
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          "Unable to save dependent."
+      );
     } finally {
       setSaving(false);
     }
   }
 
-  async function handleDelete(id) {
-    const confirmed = window.confirm("Delete this family / dependent record?");
+  async function removeDependent(row) {
+    const id = row.id || row.dependent_id;
+    if (!id) return;
+
+    const confirmed = window.confirm(
+      `Remove ${dependentName(row)} from your family records?`
+    );
+
     if (!confirmed) return;
 
+    setActionLoading(`remove-${id}`);
+    setError("");
+    setSuccess("");
+
     try {
-      setBanner({ type: "", text: "" });
-      await api.delete(`/members/me/dependents/${id}`);
-      setBanner({
-        type: "success",
-        text: "Dependent deleted successfully.",
-      });
-      await loadData();
+      const encoded = encodeURIComponent(id);
+
+      await requestFirstAvailable(
+        [
+          `/membership/dependents/${encoded}`,
+          `/membership/me/dependents/${encoded}`,
+          `/member/dependents/${encoded}`,
+          `/members/me/dependents/${encoded}`,
+        ],
+        {
+          method: "delete",
+        }
+      );
+
+      setSuccess("Dependent removed successfully.");
+      await load();
     } catch (err) {
-      console.error(err);
-      setBanner({
-        type: "error",
-        text: err?.response?.data?.error || "Failed to delete family record.",
-      });
+      console.error("Unable to remove dependent:", err);
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          "Unable to remove dependent."
+      );
+    } finally {
+      setActionLoading("");
     }
   }
 
   return (
-    <div className="member-page">
-      <MemberPageHeader
-        title="Family / Dependents"
-        subtitle="Review and manage household members and dependent records linked to your account."
-        actions={[
-          {
-            label: "Add Family Member",
-            variant: "primary",
-            onClick: openAddModal,
-          },
-        ]}
-      />
+    <div className="membership-dashboard-page member-page-stack">
+      <section className="member-page-hero">
+        <div>
+          <span className="member-eyebrow">Member Family</span>
+          <h1>Family & Dependents</h1>
+          <p className="member-page-subtitle">
+            Manage household dependents for membership coverage, school programs,
+            trip registration, and church records.
+          </p>
+        </div>
 
-      <DependentFormModal
-        open={showFormModal}
-        onClose={() => {
-          setShowFormModal(false);
-          resetForm();
-        }}
-        form={form}
-        setForm={setForm}
-        errors={errors}
-        onSave={handleSave}
-        saving={saving}
-        editingDependentId={editingDependentId}
-      />
+        <div className="member-page-actions">
+          <button type="button" className="member-btn member-btn-light" onClick={load}>
+            <RefreshCcw size={17} className={loading ? "member-spin" : ""} />
+            Refresh
+          </button>
 
-      {banner.text ? (
-        <div
-          className={`member-banner ${
-            banner.type === "error"
-              ? "member-banner-error"
-              : "member-banner-success"
-          }`}
-        >
-          {banner.text}
+          <button type="button" className="member-btn member-btn-primary" onClick={openCreate}>
+            <Plus size={17} />
+            Add Dependent
+          </button>
+        </div>
+      </section>
+
+      {error ? (
+        <div className="member-alert member-alert-danger">
+          <AlertTriangle size={17} />
+          {error}
         </div>
       ) : null}
 
-      <FamilySummaryGrid items={summaryItems} />
+      {success ? (
+        <div className="member-alert member-alert-success">
+          <Save size={17} />
+          {success}
+        </div>
+      ) : null}
 
-      <section className="member-card">
-        <div className="member-family-search-row">
-          <input
-            className="member-input"
-            placeholder="Search family members, relationships, email, or phone..."
-            value={search}
-            onChange={(e) => setSearch(e.target.value)}
-          />
+      <section className="member-summary-grid">
+        <div className="member-summary-card">
+          <span>Total Dependents</span>
+          <strong>{rows.length}</strong>
+          <small>Household records</small>
         </div>
 
-        {loading ? (
-          <div className="member-empty">
-            <h3>Loading...</h3>
-            <p>Please wait while we load your family records.</p>
-          </div>
-        ) : filteredRows.length === 0 ? (
-          <MemberEmptyState
-            title="No family or dependent records yet"
-            subtitle="Linked family and dependent records will appear here."
-          />
-        ) : (
-          <div className="member-table-wrap">
-            <table className="member-table member-family-table" style={{ minWidth: 1120 }}>
-              <thead>
-                <tr>
-                  <th>Dependent No</th>
-                  <th>Full Name</th>
-                  <th>Relationship</th>
-                  <th>Type</th>
-                  <th>Age</th>
-                  <th>Date of Birth</th>
-                  <th>Email</th>
-                  <th>Phone</th>
-                  <th>Status</th>
-                  <th className="member-col-actions">Actions</th>
-                </tr>
-              </thead>
-              <tbody>
-                {filteredRows.map((row) => (
-                  <tr key={row.id}>
-                    <td>{row.dependent_no || "--"}</td>
-                    <td>{row.full_name || "--"}</td>
-                    <td>
-                      <RelationshipBadge
-                        relationship={row.relationship}
-                        customRelationship={row.custom_relationship}
-                      />
-                    </td>
-                    <td>
-                      {row.dependent_type
-                        ? String(row.dependent_type).replaceAll("_", " ")
-                        : "--"}
-                    </td>
-                    <td>
-                      <AgeBadge age={row.age} />
-                    </td>
-                    <td>{formatDateMMDDYY(row.date_of_birth)}</td>
-                    <td>{row.email || "--"}</td>
-                    <td>{row.phone || "--"}</td>
-                    <td>
-                      <MemberStatusBadge status={row.status || "--"} />
-                    </td>
-                    <td className="member-col-actions">
-                      <RowActionsMenu
-                        row={row}
-                        onEdit={openEditModal}
-                        onDelete={handleDelete}
-                      />
-                    </td>
-                  </tr>
-                ))}
-              </tbody>
-            </table>
-          </div>
-        )}
+        <div className="member-summary-card">
+          <span>Active</span>
+          <strong>{activeCount}</strong>
+          <small>Current family records</small>
+        </div>
+
+        <div className="member-summary-card">
+          <span>Children</span>
+          <strong>{childCount}</strong>
+          <small>Child dependents</small>
+        </div>
+
+        <div className="member-summary-card">
+          <span>Email Contacts</span>
+          <strong>{hasEmailCount}</strong>
+          <small>Dependents with email</small>
+        </div>
       </section>
+
+      <section className="member-card">
+        <div className="member-section-header">
+          <div>
+            <h2>Family Register</h2>
+            <p>
+              {clean(member.full_name || member.name, "Your membership profile")} family
+              records are listed below.
+            </p>
+          </div>
+        </div>
+
+        <div className="member-filter-grid">
+          <label>
+            <span>Search</span>
+            <div className="member-input-icon">
+              <Users size={17} />
+              <input
+                value={search}
+                onChange={(event) => setSearch(event.target.value)}
+                placeholder="Search name, email, phone, grade, notes..."
+              />
+            </div>
+          </label>
+
+          <label>
+            <span>Relationship</span>
+            <select
+              value={relationship}
+              onChange={(event) => setRelationship(event.target.value)}
+            >
+              <option value="all">All Relationships</option>
+              {RELATIONSHIP_OPTIONS.map((option) => (
+                <option key={option} value={option.toLowerCase()}>
+                  {option}
+                </option>
+              ))}
+            </select>
+          </label>
+        </div>
+
+        <div className="member-table-wrap">
+          <table className="member-table">
+            <thead>
+              <tr>
+                <th>Name</th>
+                <th>Relationship</th>
+                <th>Age</th>
+                <th>School / Grade</th>
+                <th>Contact</th>
+                <th>Status</th>
+                <th>Added</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="member-empty-state">
+                      <RefreshCcw size={18} className="member-spin" />
+                      Loading family records...
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+
+              {!loading && !filteredRows.length ? (
+                <tr>
+                  <td colSpan={8}>
+                    <div className="member-empty-state">
+                      No dependents found for this view.
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+
+              {!loading
+                ? filteredRows.map((row) => {
+                    const id = row.id || row.dependent_id || dependentName(row);
+                    const status = row.status || "active";
+
+                    return (
+                      <tr key={id}>
+                        <td>
+                          <strong>{dependentName(row)}</strong>
+                          <small>{clean(row.gender)}</small>
+                        </td>
+
+                        <td>{clean(row.relationship)}</td>
+                        <td>
+                          <strong>{yearsOld(row.date_of_birth)}</strong>
+                          <small>{formatDate(row.date_of_birth)}</small>
+                        </td>
+
+                        <td>{clean(row.school_grade)}</td>
+
+                        <td>
+                          <div className="member-detail-grid">
+                            <span>
+                              <Mail size={14} />
+                              {clean(row.email)}
+                            </span>
+                            <span>
+                              <Phone size={14} />
+                              {clean(row.phone)}
+                            </span>
+                          </div>
+                        </td>
+
+                        <td>
+                          <span className={`member-badge ${statusClass(status)}`}>
+                            {clean(status)}
+                          </span>
+                        </td>
+
+                        <td>
+                          <CalendarDays size={14} />
+                          {formatDate(row.created_at)}
+                        </td>
+
+                        <td>
+                          <div className="member-row-actions">
+                            <button
+                              type="button"
+                              className="member-btn member-btn-light member-btn-sm"
+                              onClick={() => openEdit(row)}
+                            >
+                              <Edit3 size={15} />
+                              Edit
+                            </button>
+
+                            <button
+                              type="button"
+                              className="member-btn member-btn-light member-btn-sm"
+                              onClick={() => removeDependent(row)}
+                              disabled={actionLoading === `remove-${row.id}`}
+                            >
+                              <Trash2 size={15} />
+                              Remove
+                            </button>
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  })
+                : null}
+            </tbody>
+          </table>
+        </div>
+      </section>
+
+      {showModal ? (
+        <div className="member-modal-backdrop" role="presentation">
+          <div className="member-modal" role="dialog" aria-modal="true">
+            <div className="member-modal-header">
+              <div>
+                <UserRound size={22} />
+                <h2>{form.id ? "Edit Dependent" : "Add Dependent"}</h2>
+                <p>Add or update a household dependent on your member profile.</p>
+              </div>
+
+              <button
+                type="button"
+                className="member-icon-button"
+                onClick={closeModal}
+                aria-label="Close"
+              >
+                <X size={20} />
+              </button>
+            </div>
+
+            <form onSubmit={saveDependent}>
+              <div className="member-modal-body">
+                <div className="member-filter-grid member-form-grid">
+                  <label>
+                    <span>First Name *</span>
+                    <input
+                      value={form.first_name}
+                      onChange={(event) => updateForm("first_name", event.target.value)}
+                      autoComplete="given-name"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Last Name *</span>
+                    <input
+                      value={form.last_name}
+                      onChange={(event) => updateForm("last_name", event.target.value)}
+                      autoComplete="family-name"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Relationship *</span>
+                    <select
+                      value={form.relationship}
+                      onChange={(event) => updateForm("relationship", event.target.value)}
+                    >
+                      {RELATIONSHIP_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Gender</span>
+                    <select
+                      value={form.gender}
+                      onChange={(event) => updateForm("gender", event.target.value)}
+                    >
+                      <option value="">Select Gender</option>
+                      {GENDER_OPTIONS.map((option) => (
+                        <option key={option} value={option}>
+                          {option}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+
+                  <label>
+                    <span>Date Of Birth</span>
+                    <input
+                      type="date"
+                      value={form.date_of_birth}
+                      onChange={(event) => updateForm("date_of_birth", event.target.value)}
+                    />
+                  </label>
+
+                  <label>
+                    <span>School / Grade</span>
+                    <input
+                      value={form.school_grade}
+                      onChange={(event) => updateForm("school_grade", event.target.value)}
+                      placeholder="Example: Grade 4"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Email</span>
+                    <input
+                      type="email"
+                      value={form.email}
+                      onChange={(event) => updateForm("email", event.target.value)}
+                      autoComplete="email"
+                    />
+                  </label>
+
+                  <label>
+                    <span>Phone</span>
+                    <input
+                      value={form.phone}
+                      onChange={(event) => updateForm("phone", event.target.value)}
+                      autoComplete="tel"
+                    />
+                  </label>
+
+                  <label className="member-field-full">
+                    <span>Notes</span>
+                    <textarea
+                      value={form.notes}
+                      onChange={(event) => updateForm("notes", event.target.value)}
+                      rows={4}
+                    />
+                  </label>
+                </div>
+              </div>
+
+              <div className="member-modal-footer">
+                <button
+                  type="button"
+                  className="member-btn member-btn-light"
+                  onClick={closeModal}
+                  disabled={saving}
+                >
+                  Cancel
+                </button>
+
+                <button
+                  type="submit"
+                  className="member-btn member-btn-primary"
+                  disabled={saving}
+                >
+                  {saving ? <RefreshCcw size={17} className="member-spin" /> : <Plus size={17} />}
+                  {form.id ? "Save Dependent" : "Add Dependent"}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      ) : null}
     </div>
   );
 }

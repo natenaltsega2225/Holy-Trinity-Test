@@ -1,4 +1,4 @@
-// //  // src/components/Login.jsx
+// src/components/Login.jsx
 
 
 
@@ -101,6 +101,37 @@ export default function Login() {
       const { data } = await api.post("/auth/login", payload, {
         withCredentials: true,
       });
+
+   
+console.log("LOGIN RESPONSE", data);
+/* =====================================================
+   MFA REQUIRED
+===================================================== */
+
+if (data?.mfa_required) {
+
+  localStorage.setItem(
+    "ht_mfa_required",
+    "1"
+  );
+
+  localStorage.setItem(
+    "ht_mfa_user_id",
+    String(data.user_id)
+  );
+
+  navigate(
+    "/mfa-verify",
+    {
+      replace: true,
+      state: {
+        userId: data.user_id,
+      },
+    }
+  );
+
+  return;
+}
 
 /* =====================================================
    TEMP PASSWORD RESET REQUIRED
@@ -251,31 +282,46 @@ if (
       navigate(redirectTo, {
         replace: true,
       });
-    } catch (err) {
-      console.error("Login error:", err);
+    } 
+   catch (err) {
+  console.error("Login error:", err);
 
-      if (!err.response) {
-        setError(
-          `Cannot reach the API. Check that the backend is running at ${getBaseURL()} and CORS allows the frontend origin.`
-        );
-      } else if (err.response.status === 401) {
-        setError("Incorrect email, username, member ID, or password.");
-      } else if (err.response.status === 403) {
-        setError(
-          err.response?.data?.error ||
-            "This account is disabled or not active."
-        );
-      } else if (err.response.status === 429) {
-        setError("Too many attempts. Please try again later.");
-      } else {
-        setError(
-          err.response?.data?.error ||
-            err.response?.data?.message ||
-            err.message ||
-            "Login failed."
-        );
-      }
-    } finally {
+  const apiError =
+    err?.response?.data?.error ||
+    err?.response?.data?.message;
+
+  if (!err?.response) {
+    setError(
+      "Network error. Unable to connect to server."
+    );
+  } else if (err.response.status === 401) {
+    setError(
+      apiError ||
+      "Incorrect username or password."
+    );
+  } else if (err.response.status === 403) {
+    setError(
+      apiError ||
+      "Account access denied."
+    );
+  } else if (err.response.status === 423) {
+    setError(
+      apiError ||
+      "Account temporarily locked."
+    );
+  } else if (err.response.status === 429) {
+    setError(
+      "Too many login attempts."
+    );
+  } else {
+    setError(
+      apiError ||
+      "Login failed."
+    );
+  }
+}
+    
+    finally {
       setBusy(false);
     }
   }

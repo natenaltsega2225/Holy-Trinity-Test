@@ -27,77 +27,192 @@ function getRefreshDays() {
 function sha256Hex(value) {
   return crypto.createHash("sha256").update(String(value)).digest("hex");
 }
-
 function cookieOptions() {
-  const secure =
-    String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
 
-  const sameSiteRaw = String(process.env.COOKIE_SAMESITE || "Lax").trim();
+  const secure =
+
+    String(
+      process.env.COOKIE_SECURE || "false"
+    ).toLowerCase() === "true";
+
   const normalizedSameSite =
-    sameSiteRaw.toLowerCase() === "none"
+
+    secure
       ? "None"
-      : sameSiteRaw.toLowerCase() === "strict"
-      ? "Strict"
       : "Lax";
 
   return {
+
     httpOnly: true,
+
     secure,
-    sameSite: normalizedSameSite,
-    path: "/api/auth",
+
+    sameSite:
+      normalizedSameSite,
+
+    path:
+      "/api/auth",
   };
 }
+// function cookieOptions() {
+//   const secure =
+//     String(process.env.COOKIE_SECURE || "false").toLowerCase() === "true";
+
+//   // const sameSiteRaw = String(process.env.COOKIE_SAMESITE || "Lax").trim();
+//   // const normalizedSameSite =
+//   //   sameSiteRaw.toLowerCase() === "none"
+//   //     ? "None"
+//   //     : sameSiteRaw.toLowerCase() === "strict"
+//   //     ? "Strict"
+//   //     : "Lax";
+// const normalizedSameSite =
+
+//   secure
+
+//     ? "None"
+
+//     : "Lax";
+//   return {
+//     httpOnly: true,
+//     secure,
+//     sameSite: normalizedSameSite,
+//     path: "/api/auth",
+//   };
+// }
+
 
 function signAccessToken(user) {
+
   if (!user?.id) {
-    throw new Error("Cannot sign access token without user id");
+
+    throw new Error(
+      "Cannot sign access token without user id"
+    );
   }
 
   return jwt.sign(
+
     {
-      id: user.id,
-      member_id: user.member_id || null,
-      member_no: user.member_no || null,
-      email: user.email,
-      role: user.role,
-      username: user.username || user.email,
+
+      id:
+        user.id,
+
+      member_id:
+        user.member_id || null,
+
+      member_no:
+        user.member_no || null,
+
+      username:
+        user.username || user.email,
+
+      email:
+        user.email || null,
+
       full_name:
+
         user.full_name ||
+
         `${user.first_name || ""} ${user.last_name || ""}`.trim(),
-      must_change_password: Number(user.must_change_password || 0),
+
+      role:
+        user.role || "member",
+
+      status:
+        user.status || null,
+
+      is_active:
+        Number(user.is_active || 0),
+
+      must_change_password:
+        Number(
+          user.must_change_password || 0
+        ),
+
+      token_version:
+        Number(
+          user.token_version || 0
+        ),
+
+      session_type:
+        "access",
     },
+
     getJwtSecret(),
-    { expiresIn: getAccessTtl() }
+
+    {
+
+      expiresIn:
+        getAccessTtl(),
+    }
   );
 }
 
+
 function authRequired(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+
+  const header =
+    req.headers.authorization || "";
+
+  const token =
+    header.startsWith("Bearer ")
+      ? header.slice(7)
+      : null;
 
   if (!token) {
-    return res.status(401).json({ error: "Unauthorized" });
+
+    return res.status(401).json({
+      error: "Unauthorized",
+    });
   }
 
   try {
-    const payload = jwt.verify(token, getJwtSecret());
+
+    const payload =
+      jwt.verify(
+        token,
+        getJwtSecret()
+      );
 
     req.user = {
-      id: payload.id,
-      member_id: payload.member_id || null,
-      member_no: payload.member_no || null,
-      email: payload.email,
-      role: payload.role,
-      username: payload.username,
-      full_name: payload.full_name || "",
-      must_change_password: Number(payload.must_change_password || 0),
+
+      id:
+        payload.id,
+
+      member_id:
+        payload.member_id || null,
+
+      member_no:
+        payload.member_no || null,
+
+      email:
+        payload.email,
+
+      role:
+        payload.role,
+
+      username:
+        payload.username,
+
+      full_name:
+        payload.full_name || "",
+
+      must_change_password:
+        Number(
+          payload.must_change_password || 0
+        ),
     };
 
     return next();
+
   } catch {
-    return res.status(401).json({ error: "Unauthorized" });
+
+    return res.status(401).json({
+      error: "Unauthorized",
+    });
   }
 }
+
 function sleep(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
@@ -135,52 +250,121 @@ async function insertRefreshTokenWithRetry(userId, tokenHash, expiresAt, retries
   throw lastErr;
 }
 
-async function issueTokens(res, user) {
+
+async function issueTokens(
+  res,
+  user,
+  meta = {}
+) {
+
   if (!user?.id) {
-    throw new Error("Cannot issue tokens without user id");
+
+    throw new Error(
+      "Cannot issue tokens without user id"
+    );
   }
 
-  const accessToken = signAccessToken(user);
-  const refreshToken = crypto.randomBytes(48).toString("base64url");
-  const tokenHash = sha256Hex(refreshToken);
+  const accessToken =
+    signAccessToken(user);
 
-  const days = getRefreshDays();
-  const expiresAt = new Date(Date.now() + days * 24 * 60 * 60 * 1000);
+  const refreshToken =
+    crypto
+      .randomBytes(48)
+      .toString("base64url");
 
-  await insertRefreshTokenWithRetry(user.id, tokenHash, expiresAt);
+  const tokenHash =
+    sha256Hex(refreshToken);
 
-  res.cookie("ht_refresh", refreshToken, {
-    ...cookieOptions(),
-    expires: expiresAt,
-  });
+  const days =
+    getRefreshDays();
 
-  return { accessToken };
+  const expiresAt =
+    new Date(
+
+      Date.now() +
+
+      days *
+        24 *
+        60 *
+        60 *
+        1000
+    );
+
+  await insertRefreshTokenWithRetry(
+
+    user.id,
+
+    tokenHash,
+
+    expiresAt
+  );
+
+  res.cookie(
+
+    "ht_refresh",
+
+    refreshToken,
+
+    {
+
+      ...cookieOptions(),
+
+      expires:
+        expiresAt,
+    }
+  );
+
+  return {
+
+    accessToken,
+
+    refresh: {
+
+      expires_at:
+        expiresAt,
+
+      expires_in_days:
+        days,
+    },
+
+    session: {
+
+      user_id:
+        user.id,
+
+      member_id:
+        user.member_id || null,
+
+      role:
+        user.role || null,
+    },
+  };
 }
 
-function authRequired(req, res, next) {
-  const header = req.headers.authorization || "";
-  const token = header.startsWith("Bearer ") ? header.slice(7) : null;
+// function authRequired(req, res, next) {
+//   const header = req.headers.authorization || "";
+//   const token = header.startsWith("Bearer ") ? header.slice(7) : null;
 
-  if (!token) {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
+//   if (!token) {
+//     return res.status(401).json({ error: "Unauthorized" });
+//   }
 
-  try {
-    const payload = jwt.verify(token, getJwtSecret());
+//   try {
+//     const payload = jwt.verify(token, getJwtSecret());
 
-    req.user = {
-      id: payload.id,
-      member_id: payload.member_id || null,
-      email: payload.email,
-      role: payload.role,
-      username: payload.username,
-    };
+//     req.user = {
+//       id: payload.id,
+//       member_id: payload.member_id || null,
+//       email: payload.email,
+//       role: payload.role,
+//       username: payload.username,
+//     };
 
-    return next();
-  } catch {
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-}
+//     return next();
+//   } catch {
+//     return res.status(401).json({ error: "Unauthorized" });
+//   }
+// }
 
 function requireRole(...roles) {
   const allow = new Set(roles);

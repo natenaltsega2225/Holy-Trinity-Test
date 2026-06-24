@@ -2,7 +2,8 @@
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../api";
 import "../../../styles/admin-media-manager.css";
-
+// import "../../../styles/admin-enterprise.css";
+// import "../../../styles/admin-table.css";
 const emptyForm = {
   title: "",
   description: "",
@@ -272,8 +273,8 @@ export default function ResourcesAdmin() {
   }, [page, totalPages]);
 
   return (
-    <div className="amm-page">
-      <section className="amm-hero">
+    <div className="admin-page">
+     <section className="admin-page-header">
         <div>
           <h2>Resources Manager</h2>
           <p>
@@ -297,30 +298,29 @@ export default function ResourcesAdmin() {
         </div>
       ) : null}
 
-      <section className="amm-stats">
-        <article className="amm-stat-card">
+      <section className="admin-kpi-grid">
+        <article className="admin-kpi-card">
           <span>Total Resources</span>
           <strong>{totalResources}</strong>
         </article>
-        <article className="amm-stat-card">
+        <article className="admin-kpi-card">
           <span>Published</span>
           <strong>{publishedCount}</strong>
         </article>
-        <article className="amm-stat-card">
+        <article className="admin-kpi-card">
           <span>Drafts</span>
           <strong>{draftCount}</strong>
         </article>
-        <article className="amm-stat-card">
+        <article className="admin-kpi-card">
           <span>Categories</span>
           <strong>{categoryCount}</strong>
         </article>
       </section>
 
-      <section className="amm-panel">
-        <div className="amm-toolbar">
-          <div className="amm-toolbar-left">
-            <input
-              className="amm-search"
+      <section className="admin-card">
+       <div className="admin-toolbar">
+          <div className="admin-toolbar-left">
+            <input className="admin-search"
               type="text"
               placeholder="Search by title, description, or category..."
               value={search}
@@ -331,7 +331,7 @@ export default function ResourcesAdmin() {
             />
 
             <select
-              className="amm-filter"
+              className="admin-select"
               value={categoryFilter}
               onChange={(e) => {
                 setCategoryFilter(e.target.value);
@@ -347,7 +347,7 @@ export default function ResourcesAdmin() {
             </select>
           </div>
 
-          <div className="amm-toolbar-right">
+          <div className="admin-toolbar-right">
             <label className="amm-rows-label">
               Rows per page
               <select
@@ -372,7 +372,7 @@ export default function ResourcesAdmin() {
         </div>
 
         <div className="amm-table-wrap">
-          <table className="amm-table">
+          <table className="admin-table">
             <thead>
               <tr>
                 <th>Resource</th>

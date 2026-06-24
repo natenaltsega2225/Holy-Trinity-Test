@@ -1,55 +1,211 @@
+// frontend/src/components/FinanceDashboard/components/FinanceTablePage.jsx
 
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  ChevronLeft,
+  ChevronRight,
+  Download,
+  RefreshCcw,
+  Search,
+} from "lucide-react";
 
- //frontend\src\components\FinanceDashboard\components\FinanceTablePage.jsx
-import React, { useEffect, useMemo, useState } from "react";
 import api from "../../api";
-import FinancePageHeader from "./FinancePageHeader";
-//  import FinanceFilters from "./FinanceFilters";
-import FinancePagination from "./FinancePagination";
-import FinanceSummaryCards from "./FinanceSummaryCards";
-import FinanceEmptyState from "./FinanceEmptyState";
-import FinanceStatusBadge from "./FinanceStatusBadge";
+import "../../../styles/finance-enterprise.css";
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
+}
 
 function formatMoney(value) {
-  const amount = Number(value || 0);
-  return new Intl.NumberFormat("en-US", {
+  return numberValue(value).toLocaleString("en-US", {
     style: "currency",
     currency: "USD",
-  }).format(amount);
+  });
 }
 
-function getValueByPath(obj, path) {
-  if (!obj || !path) return undefined;
-  return String(path)
-    .split(".")
-    .reduce((acc, key) => (acc == null ? undefined : acc[key]), obj);
+function formatDate(value) {
+  if (!value) return "--";
+
+  const raw = clean(value);
+  const match = raw.match(/^(\d{4})-(\d{2})-(\d{2})/);
+
+  if (match) return `${match[2]}/${match[3]}/${match[1]}`;
+
+  const d = new Date(value);
+
+  if (Number.isNaN(d.getTime())) return raw;
+
+  return d.toLocaleDateString("en-US");
 }
 
-function normalizeRows(data) {
-  if (Array.isArray(data)) return data;
-  if (Array.isArray(data?.rows)) return data.rows;
-  if (Array.isArray(data?.items)) return data.items;
-  if (Array.isArray(data?.data)) return data.data;
+function pretty(value) {
+  const text = clean(value);
+  if (!text) return "--";
+
+  return text
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function statusTone(status) {
+  const value = clean(status).toLowerCase();
+
+  if (["paid", "active", "approved", "completed", "posted", "verified", "sent"].includes(value)) {
+    return "success";
+  }
+
+  if (["failed", "inactive", "cancelled", "void", "rejected", "overdue"].includes(value)) {
+    return "danger";
+  }
+
+  if (["pending", "draft", "partial", "processing", "received", "open"].includes(value)) {
+    return "warning";
+  }
+
+  return "neutral";
+}
+
+function FinanceStatusBadge({ status }) {
+  return (
+    <span className={`finance-status-badge ${statusTone(status)}`}>
+      {pretty(status)}
+    </span>
+  );
+}
+
+function normalizeRows(payload) {
+  if (Array.isArray(payload)) return payload;
+
+  const candidates = [
+    payload?.rows,
+    payload?.data,
+    payload?.items,
+    payload?.results,
+    payload?.records,
+    payload?.payments,
+    payload?.receipts,
+    payload?.invoices,
+    payload?.data?.rows,
+    payload?.data?.items,
+    payload?.data?.results,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
   return [];
 }
 
-function normalizeMeta(data, rows, currentPage, currentPageSize) {
-  const total = Number(data?.total ?? data?.meta?.total ?? rows.length ?? 0);
-  const limit = Number(
-    data?.limit ??
-      data?.pageSize ??
-      data?.meta?.limit ??
-      data?.meta?.pageSize ??
-      currentPageSize
-  );
-  const totalPages = Number(
-    data?.totalPages ??
-      data?.meta?.totalPages ??
-      Math.max(1, Math.ceil(total / Math.max(1, limit)))
-  );
-  const page = Number(data?.page ?? data?.meta?.page ?? currentPage);
+function normalizeMeta(payload, rows, page, limit) {
+  const meta =
+    payload?.meta ||
+    payload?.pagination ||
+    payload?.data?.meta ||
+    payload?.data?.pagination ||
+    {};
 
-  return { total, totalPages, page, limit };
+  const total = Number(
+    meta.total ||
+      meta.totalRows ||
+      meta.total_records ||
+      payload?.total ||
+      payload?.count ||
+      rows.length
+  );
+
+  const currentPage = Number(meta.page || meta.current_page || page);
+  const pageSize = Number(meta.limit || meta.pageSize || meta.page_size || limit);
+  const totalPages = Math.max(1, Math.ceil(total / Math.max(1, pageSize)));
+
+  return {
+    total,
+    page: currentPage,
+    limit: pageSize,
+    totalPages,
+  };
+}
+
+function valueFor(row, column) {
+  if (typeof column.accessor === "function") return column.accessor(row);
+  return row?.[column.key];
+}
+
+function exportCsv(rows, columns, title = "finance-export") {
+  const visibleColumns = columns.filter((column) => column.export !== false);
+
+  const headers = visibleColumns.map((column) => column.label || column.key);
+
+  const lines = rows.map((row) =>
+    visibleColumns
+      .map((column) => {
+        const value = valueFor(row, column);
+
+        if (column.money) return formatMoney(value);
+        if (column.date) return formatDate(value);
+        if (column.status) return pretty(value);
+
+        return clean(value);
+      })
+      .map((value) => `"${String(value ?? "").replaceAll('"', '""')}"`)
+      .join(",")
+  );
+
+  const blob = new Blob([[headers.join(","), ...lines].join("\n")], {
+    type: "text/csv;charset=utf-8",
+  });
+
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+
+  a.href = url;
+  a.download = `${title
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-|-$/g, "")}-${new Date().toISOString().slice(0, 10)}.csv`;
+
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function buildActionPayload(action, row) {
+  if (!action) return {};
+
+  if (typeof action.payload === "function") return action.payload(row);
+  if (action.payload && typeof action.payload === "object") return action.payload;
+
+  return {};
+}
+
+function buildEndpoint(action, row) {
+  if (!action) return "";
+
+  if (typeof action.endpoint === "function") return action.endpoint(row);
+  return action.endpoint || "";
+}
+
+async function runActionRequest(action, row) {
+  const endpoint = buildEndpoint(action, row);
+  const method = clean(action.method || "post").toLowerCase();
+  const payload = buildActionPayload(action, row);
+
+  if (!endpoint) {
+    throw new Error("Action endpoint is missing.");
+  }
+
+  if (method === "get") return api.get(endpoint, { params: payload });
+  if (method === "patch") return api.patch(endpoint, payload);
+  if (method === "put") return api.put(endpoint, payload);
+  if (method === "delete") return api.delete(endpoint, { data: payload });
+
+  return api.post(endpoint, payload);
 }
 
 export default function FinanceTablePage({
@@ -57,341 +213,480 @@ export default function FinanceTablePage({
   subtitle,
   endpoint,
   columns = [],
+  extraFilters = [],
   actions = [],
   rowActions = [],
-  pageSize: defaultPageSize = 10,
-  defaultPeriod = "all",
-  extraFilters = [],
-  summaryBuilder,
-  requestParams = {},
-  rowKey = "id",
-  showPeriodFilter = true,
-  searchPlaceholder = "Search...",
   topContent = null,
+
+  pageSize = 25,
+  defaultPeriod = "all",
+  showPeriodFilter = true,
+  searchPlaceholder = "Search records...",
+  emptyText = "No records found.",
+  exportFileName,
+
+  transformRows,
+  transformPayload,
+  buildParams,
 }) {
   const [rows, setRows] = useState([]);
-  const [search, setSearch] = useState("");
-  const [period, setPeriod] = useState(defaultPeriod);
-  const [page, setPage] = useState(1);
-  const [pageSize, setPageSize] = useState(defaultPageSize);
   const [meta, setMeta] = useState({
     total: 0,
-    totalPages: 1,
     page: 1,
-    limit: defaultPageSize,
+    limit: pageSize,
+    totalPages: 1,
   });
+
+  const [search, setSearch] = useState("");
+  const [period, setPeriod] = useState(defaultPeriod || "all");
+  const [page, setPage] = useState(1);
+
   const [loading, setLoading] = useState(true);
+  const [actionLoading, setActionLoading] = useState("");
   const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-  async function loadData(signalIgnore = { ignore: false }) {
-    try {
-      setLoading(true);
-      setError("");
+  const filterParams = useMemo(() => {
+    const params = {
+      q: search,
+      search,
+      period,
+      page,
+      limit: pageSize,
+      pageSize,
+    };
 
-      const filterParams = Object.fromEntries(
-        extraFilters.map((filter) => [filter.key, filter.value ?? ""])
-      );
+    for (const filter of extraFilters) {
+      if (!filter?.key) continue;
 
-      const params = {
-        q: search,
-        search,
-        period,
-        page,
-        limit: pageSize,
-        pageSize,
-        ...requestParams,
-        ...filterParams,
+      params[filter.key] = filter.value ?? "";
+    }
+
+    if (typeof buildParams === "function") {
+      return {
+        ...params,
+        ...buildParams({
+          search,
+          period,
+          page,
+          pageSize,
+          extraFilters,
+        }),
       };
-const safeEndpoint = endpoint.startsWith("/api")
-  ? endpoint.replace(/^\/api/, "")
-  : endpoint;
-    const { data } = await api.get(safeEndpoint, { params });
-      if (signalIgnore.ignore) return;
+    }
 
-      const nextRows = normalizeRows(data);
-      const nextMeta = normalizeMeta(data, nextRows, page, pageSize);
+    return params;
+  }, [search, period, page, pageSize, extraFilters, buildParams]);
+
+  const loadRows = useCallback(async () => {
+    if (!endpoint) return;
+
+    setLoading(true);
+    setError("");
+
+    try {
+      const response = await api.get(endpoint, {
+        params: filterParams,
+      });
+
+      const payload =
+        typeof transformPayload === "function"
+          ? transformPayload(response.data)
+          : response.data;
+
+      let nextRows = normalizeRows(payload);
+
+      if (typeof transformRows === "function") {
+        nextRows = transformRows(nextRows, payload);
+      }
 
       setRows(nextRows);
-      setMeta(nextMeta);
+      setMeta(normalizeMeta(payload, nextRows, page, pageSize));
     } catch (err) {
-      if (signalIgnore.ignore) return;
-      console.error(`${title} load failed:`, err);
-      setRows([]);
-      setMeta({
-        total: 0,
-        totalPages: 1,
-        page: 1,
-        limit: pageSize,
-      });
-      setError(err?.response?.data?.error || "Failed to load data.");
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load finance records."
+      );
     } finally {
-      if (!signalIgnore.ignore) setLoading(false);
+      setLoading(false);
+    }
+  }, [endpoint, filterParams, page, pageSize, transformPayload, transformRows]);
+
+  useEffect(() => {
+    loadRows();
+  }, [loadRows]);
+
+  const helpers = useMemo(
+    () => ({
+      formatMoney,
+      formatDate,
+      pretty,
+      FinanceStatusBadge,
+      refresh: loadRows,
+    }),
+    [loadRows]
+  );
+
+  const localFilteredRows = useMemo(() => {
+    const q = clean(search).toLowerCase();
+
+    if (!q) return rows;
+
+    return rows.filter((row) => {
+      const haystack = columns
+        .map((column) => valueFor(row, column))
+        .join(" ")
+        .toLowerCase();
+
+      return haystack.includes(q);
+    });
+  }, [rows, columns, search]);
+
+  async function runRowAction(action, row, index) {
+    if (typeof action.onClick === "function") {
+      action.onClick(row, helpers);
+      return;
+    }
+
+    const key = `${action.label || "action"}:${row?.id || index}`;
+
+    setActionLoading(key);
+    setError("");
+    setSuccess("");
+
+    try {
+      await runActionRequest(action, row);
+
+      setSuccess(action.successMessage || `${action.label || "Action"} completed.`);
+      await loadRows();
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          `${action.label || "Action"} failed.`
+      );
+    } finally {
+      setActionLoading("");
     }
   }
 
-  useEffect(() => {
-    const signalIgnore = { ignore: false };
-    loadData(signalIgnore);
-    return () => {
-      signalIgnore.ignore = true;
-    };
-  }, [
-    endpoint,
-    title,
-    search,
-    period,
-    page,
-    pageSize,
-    JSON.stringify(requestParams),
-    JSON.stringify(extraFilters.map((f) => [f.key, f.value])),
-  ]);
+  function resetFilters() {
+    setSearch("");
+    setPeriod(defaultPeriod || "all");
+    setPage(1);
 
-  const resolvedColumns = useMemo(() => {
-    return columns.map((column) => ({
-      ...column,
-      render:
-        typeof column.render === "function"
-          ? column.render
-          : (value) => value ?? "--",
-    }));
-  }, [columns]);
-
-  const summaryItems = useMemo(() => {
-    if (typeof summaryBuilder === "function") {
-      return summaryBuilder(rows, meta, formatMoney);
-    }
-
-    const totalAmount = rows.reduce((sum, row) => {
-      const candidate =
-        row.amount ??
-        row.total_amount ??
-        row.balance_due ??
-        row.open_balance ??
-        row.balance ??
-        row.credit ??
-        row.grand_total ??
-        0;
-      return sum + Number(candidate || 0);
-    }, 0);
-
-    const successCount = rows.filter((row) =>
-      [
-        "paid",
-        "succeeded",
-        "active",
-        "verified",
-        "matched",
-        "approved",
-        "completed",
-        "cleared",
-        "posted",
-        "deposited",
-      ].includes(
-        String(
-          row.status || row.membership_status || row.deposit_status || ""
-        ).toLowerCase()
-      )
-    ).length;
-
-    return [
-      {
-        label: "Records",
-        value: meta.total,
-        sub: "Returned from current query",
-      },
-      {
-        label: "Visible Total",
-        value: formatMoney(totalAmount),
-        sub: "Current page aggregate",
-      },
-      {
-        label: "Successful",
-        value: successCount,
-        sub: "Completed or approved rows",
-      },
-      {
-        label: "Period",
-        value: showPeriodFilter ? period : "all",
-        sub: "Current filter",
-      },
-    ];
-  }, [rows, meta, period, summaryBuilder, showPeriodFilter]);
-
-  const hasRowActions = Array.isArray(rowActions) && rowActions.length > 0;
-
-  async function handleRowAction(action, row) {
-    try {
-      if (typeof action.onClick === "function") {
-        await action.onClick(row, {
-          reload: () => loadData({ ignore: false }),
-          api,
-        });
-        await loadData({ ignore: false });
-        return;
+    extraFilters.forEach((filter) => {
+      if (typeof filter.onChange === "function") {
+        filter.onChange("");
       }
-
-      if (action.endpoint && action.method) {
-        const url =
-          typeof action.endpoint === "function"
-            ? action.endpoint(row)
-            : String(action.endpoint).replace(":id", row.id);
-
-        const payload =
-          typeof action.payload === "function"
-            ? action.payload(row)
-            : action.payload || {};
-
-        await api.request({
-          url,
-          method: action.method,
-          data: payload,
-        });
-
-        await loadData({ ignore: false });
-      }
-    } catch (err) {
-      console.error(`Row action failed for ${title}:`, err);
-      setError(err?.response?.data?.error || "Action failed.");
-    }
+    });
   }
 
   return (
-    <div className="finance-page-shell">
-      <FinancePageHeader title={title} subtitle={subtitle} actions={actions} />
+    <div className="finance-page">
+      <div className="finance-page-header">
+        <div>
+          <p className="finance-eyebrow">Finance Dashboard</p>
+          <h1>{title}</h1>
+          {subtitle ? <span>{subtitle}</span> : null}
+        </div>
 
-      {topContent ? (
-        <section className="finance-card finance-inline-nav-card">
-          {topContent}
-        </section>
-      ) : null}
+        <div className="finance-page-actions">
+          <button
+            type="button"
+            className="finance-btn ghost"
+            onClick={loadRows}
+            disabled={loading}
+          >
+            <RefreshCcw size={16} />
+            Refresh
+          </button>
 
-      <FinanceSummaryCards items={summaryItems} />
+          <button
+            type="button"
+            className="finance-btn ghost"
+            onClick={() => exportCsv(localFilteredRows, columns, exportFileName || title)}
+            disabled={!localFilteredRows.length}
+          >
+            <Download size={16} />
+            Export
+          </button>
 
-      {/* <FinanceFilters
-        search={search}
-        onSearchChange={(value) => {
-          setSearch(value);
-          setPage(1);
-        }}
-        period={period}
-        onPeriodChange={(value) => {
-          setPeriod(value);
-          setPage(1);
-        }}
-        extraFilters={extraFilters}
-        pageSize={pageSize}
-        onPageSizeChange={(value) => {
-          setPageSize(value);
-          setPage(1);
-        }}
-        showPeriodFilter={showPeriodFilter}
-        searchPlaceholder={searchPlaceholder}
-      /> */}
+          {actions.map((action) => (
+            <button
+              key={action.label}
+              type="button"
+              className={`finance-btn ${action.variant || "primary"}`}
+              onClick={() => action.onClick?.(helpers)}
+              disabled={action.disabled}
+            >
+              {action.icon || null}
+              {action.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
+      {topContent}
 
       {error ? (
-        <section className="finance-alert finance-alert-error">{error}</section>
+        <div className="finance-alert danger">
+          <AlertTriangle size={16} />
+          {error}
+        </div>
       ) : null}
 
-      {loading ? (
-        <section className="finance-card finance-loading-card">Loading...</section>
-      ) : rows.length === 0 ? (
-        <FinanceEmptyState
-          title={`No ${String(title || "records").toLowerCase()} found`}
-          description="Try adjusting your search or filters."
-        />
-      ) : (
-        <section className="finance-card finance-table-card">
-          <div className="finance-table-wrap">
-            <table className="finance-table">
-              <thead>
-                <tr>
-                  {resolvedColumns.map((column) => (
-                    <th key={column.key}>{column.label}</th>
+      {success ? (
+        <div className="finance-alert success">
+          <CheckCircle2 size={16} />
+          {success}
+        </div>
+      ) : null}
+
+      <div className="finance-summary-grid">
+        <div className="finance-summary-card">
+          <span>Records</span>
+          <strong>{meta.total || localFilteredRows.length}</strong>
+          <small>Returned from current query</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Visible Rows</span>
+          <strong>{localFilteredRows.length}</strong>
+          <small>Rows displayed on this page</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Page</span>
+          <strong>
+            {meta.page} / {meta.totalPages}
+          </strong>
+          <small>Current pagination</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Period</span>
+          <strong>{pretty(period)}</strong>
+          <small>Current date filter</small>
+        </div>
+      </div>
+
+      <div className="finance-panel">
+        <div className="finance-toolbar">
+          <label className="finance-search-field">
+            <Search size={15} />
+            <input
+              value={search}
+              onChange={(event) => {
+                setSearch(event.target.value);
+                setPage(1);
+              }}
+              placeholder={searchPlaceholder}
+            />
+          </label>
+
+          {showPeriodFilter ? (
+            <select
+              value={period}
+              onChange={(event) => {
+                setPeriod(event.target.value);
+                setPage(1);
+              }}
+            >
+              <option value="all">All Time</option>
+              <option value="today">Today</option>
+              <option value="week">This Week</option>
+              <option value="month">This Month</option>
+              <option value="quarter">This Quarter</option>
+              <option value="year">This Year</option>
+            </select>
+          ) : null}
+
+          {extraFilters.map((filter) => {
+            if (filter.hidden) return null;
+
+            if (Array.isArray(filter.options)) {
+              return (
+                <select
+                  key={filter.key}
+                  value={filter.value ?? ""}
+                  onChange={(event) => {
+                    filter.onChange?.(event.target.value);
+                    setPage(1);
+                  }}
+                >
+                  {filter.options.map((option) => (
+                    <option key={option.value || "all"} value={option.value}>
+                      {option.label}
+                    </option>
                   ))}
-                  {hasRowActions ? <th>Actions</th> : null}
+                </select>
+              );
+            }
+
+            const type =
+              filter.type ||
+              (filter.key?.toLowerCase().includes("date") ? "date" : "text");
+
+            return (
+              <input
+                key={filter.key}
+                type={type}
+                value={filter.value ?? ""}
+                placeholder={filter.label || filter.key}
+                onChange={(event) => {
+                  filter.onChange?.(event.target.value);
+                  setPage(1);
+                }}
+              />
+            );
+          })}
+
+          <button type="button" className="finance-btn ghost" onClick={resetFilters}>
+            Clear
+          </button>
+        </div>
+
+        <div className="finance-table-wrap">
+          <table className="finance-table">
+            <thead>
+              <tr>
+                {columns.map((column) => (
+                  <th key={column.key || column.label}>{column.label || column.key}</th>
+                ))}
+
+                {rowActions.length ? (
+                  <th className="finance-actions-col">Actions</th>
+                ) : null}
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td
+                    colSpan={columns.length + (rowActions.length ? 1 : 0)}
+                    className="finance-empty-cell"
+                  >
+                    Loading records...
+                  </td>
                 </tr>
-              </thead>
+              ) : null}
 
-              <tbody>
-                {rows.map((row, index) => {
-                  const key =
-                    row?.[rowKey] ??
-                    row?.id ??
-                    row?.code ??
-                    row?.invoice_number ??
-                    row?.receipt_number ??
-                    row?.reference_no ??
-                    index;
+              {!loading && !localFilteredRows.length ? (
+                <tr>
+                  <td
+                    colSpan={columns.length + (rowActions.length ? 1 : 0)}
+                    className="finance-empty-cell"
+                  >
+                    {emptyText}
+                  </td>
+                </tr>
+              ) : null}
 
-                  return (
-                    <tr key={key}>
-                      {resolvedColumns.map((column) => {
-                        const rawValue = getValueByPath(row, column.key);
+              {!loading &&
+                localFilteredRows.map((row, rowIndex) => (
+                  <tr key={row.id || row.uuid || rowIndex}>
+                    {columns.map((column) => {
+                      const rawValue = valueFor(row, column);
 
-                        return (
-                          <td key={column.key}>
-                            {column.render(rawValue, row, {
-                              formatMoney,
-                              FinanceStatusBadge,
-                            })}
-                          </td>
-                        );
-                      })}
+                      let rendered = rawValue ?? "--";
 
-                      {hasRowActions ? (
-                        <td>
-                          <div className="finance-row-actions">
-                            {rowActions.map((action, idx) => {
-                              const visible =
-                                typeof action.visible === "function"
-                                  ? action.visible(row)
-                                  : true;
+                      if (typeof column.render === "function") {
+                        rendered = column.render(rawValue, row, helpers);
+                      } else if (column.money) {
+                        rendered = formatMoney(rawValue);
+                      } else if (column.date) {
+                        rendered = formatDate(rawValue);
+                      } else if (column.status) {
+                        rendered = <FinanceStatusBadge status={rawValue} />;
+                      }
 
-                              if (!visible) return null;
+                      return (
+                        <td key={column.key || column.label}>
+                          {rendered}
+                        </td>
+                      );
+                    })}
 
-                              const disabled =
-                                typeof action.disabled === "function"
-                                  ? action.disabled(row)
-                                  : false;
-
-                              const btnClass =
-                                action.variant === "primary"
-                                  ? "finance-btn finance-btn-primary"
-                                  : "finance-btn finance-btn-secondary";
+                    {rowActions.length ? (
+                      <td>
+                        <div className="finance-row-actions">
+                          {rowActions
+                            .filter((action) =>
+                              typeof action.visible === "function"
+                                ? action.visible(row)
+                                : action.visible !== false
+                            )
+                            .map((action) => {
+                              const loadingKey = `${action.label || "action"}:${
+                                row?.id || rowIndex
+                              }`;
 
                               return (
                                 <button
-                                  key={`${action.label}-${idx}`}
+                                  key={action.label}
                                   type="button"
-                                  className={btnClass}
-                                  disabled={disabled}
-                                  onClick={() => handleRowAction(action, row)}
+                                  className={`finance-mini-button ${
+                                    action.variant || ""
+                                  }`}
+                                  disabled={
+                                    Boolean(actionLoading) ||
+                                    (typeof action.disabled === "function"
+                                      ? action.disabled(row)
+                                      : action.disabled)
+                                  }
+                                  onClick={() => runRowAction(action, row, rowIndex)}
                                 >
-                                  {typeof action.label === "function"
-                                    ? action.label(row)
+                                  {action.icon || null}
+                                  {actionLoading === loadingKey
+                                    ? "Working..."
                                     : action.label}
                                 </button>
                               );
                             })}
-                          </div>
-                        </td>
-                      ) : null}
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
-          </div>
+                        </div>
+                      </td>
+                    ) : null}
+                  </tr>
+                ))}
+            </tbody>
+          </table>
+        </div>
 
-          <FinancePagination
-            page={meta.page || page}
-            totalPages={meta.totalPages || 1}
-            total={meta.total || 0}
-            pageSize={pageSize}
-            onPageChange={setPage}
-          />
-        </section>
-      )}
+        <div className="finance-pagination-bar">
+          <span>
+            Showing page {meta.page} of {meta.totalPages}
+          </span>
+
+          <div className="finance-row-actions">
+            <button
+              type="button"
+              className="finance-mini-button"
+              disabled={page <= 1 || loading}
+              onClick={() => setPage((prev) => Math.max(1, prev - 1))}
+            >
+              <ChevronLeft size={14} />
+              Previous
+            </button>
+
+            <button
+              type="button"
+              className="finance-mini-button"
+              disabled={page >= meta.totalPages || loading}
+              onClick={() => setPage((prev) => prev + 1)}
+            >
+              Next
+              <ChevronRight size={14} />
+            </button>
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
+
+export { FinanceStatusBadge, formatMoney, formatDate, pretty };

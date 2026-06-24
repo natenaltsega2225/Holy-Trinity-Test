@@ -1,423 +1,500 @@
 // frontend/src/components/FinanceDashboard/components/FinancePledgeManagementPanel.jsx
-
-import React, {
-  useMemo,
-  useState,
-} from "react";
-
+import React, { useEffect, useMemo, useState } from "react";
 import {
-  Landmark,
-  Plus,
-  Send,
-  Download,
-  CheckCircle2,
   AlertTriangle,
+  CheckCircle2,
+  CreditCard,
+  FileText,
+  Mail,
+  Plus,
+  RefreshCcw,
+  Search,
+  Send,
+  Target,
 } from "lucide-react";
 
-import "../../../styles/finance-dashboard.css";
+import api from "../../api";
 
-/* =========================================================
-   HELPERS
-========================================================= */
+// import "../../../styles/finance-enterprise.css";
+// import "../../../styles/finance-dashboard.css";
+import "../../../styles/finance-enterprise.css";
+function rowsFrom(data) {
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.items)) return data.items;
+  if (Array.isArray(data)) return data;
+  return [];
+}
 
 function money(value) {
-  return `$${Number(
-    value || 0
-  ).toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+  return Number(value || 0).toLocaleString("en-US", {
+    style: "currency",
+    currency: "USD",
+  });
 }
 
 function pretty(value) {
   return String(value || "--")
     .replaceAll("_", " ")
-    .replace(/\b\w/g, (c) =>
-      c.toUpperCase()
-    );
+    .replaceAll("-", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+function formatDate(value) {
+  if (!value) return "--";
+
+  const parsed = new Date(value);
+  if (Number.isNaN(parsed.getTime())) return "--";
+
+  return parsed.toLocaleDateString("en-US", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
+
+function numberValue(value) {
+  const parsed = Number(value || 0);
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function pledgeProgress(row = {}) {
+  const pledged = numberValue(row.pledged_amount || row.amount || row.total_amount);
+  const paid = Math.min(numberValue(row.paid_amount), pledged);
+  const remaining = Math.max(pledged - paid, 0);
+  const progress = pledged > 0 ? Math.min((paid / pledged) * 100, 100) : 0;
+
+  return {
+    pledged,
+    paid,
+    remaining,
+    progress,
+  };
+}
+
+async function postFirst(paths, payload = {}) {
+  let lastError = null;
+
+  for (const path of paths.filter(Boolean)) {
+    try {
+      return await api.post(path, payload);
+    } catch (err) {
+      lastError = err;
+    }
+  }
+
+  throw lastError;
+}
 
 export default function FinancePledgeManagementPanel({
-  rows = [],
   onCreatePledge,
   onApplyPayment,
-  onReminder,
-  onExport,
+  onViewPledge,
 }) {
-  const summary =
-    useMemo(() => {
+  const [rows, setRows] = useState([]);
+  const [campaigns, setCampaigns] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [busyId, setBusyId] = useState("");
+  const [error, setError] = useState("");
+  const [success, setSuccess] = useState("");
 
-      const pledged =
-        rows.reduce(
-          (sum, r) =>
-            sum +
-            Number(
-              r.pledged_amount || 0
-            ),
-          0
-        );
+  const [filters, setFilters] = useState({
+    search: "",
+    status: "",
+    campaign_id: "",
+  });
 
-      const paid =
-        rows.reduce(
-          (sum, r) =>
-            sum +
-            Number(
-              r.paid_amount || 0
-            ),
-          0
-        );
+  useEffect(() => {
+    load();
+  }, []);
 
-      return {
-        pledged,
-        paid,
-        remaining:
-          pledged - paid,
-      };
+  async function load() {
+    try {
+      setLoading(true);
+      setError("");
+      setSuccess("");
 
-    }, [rows]);
+      const [pledgesRes, campaignsRes] = await Promise.all([
+        api.get("/finance/pledges", { params: filters }),
+        api.get("/finance/campaigns").catch(() => ({ data: { rows: [] } })),
+      ]);
+
+      setRows(rowsFrom(pledgesRes.data));
+      setCampaigns(rowsFrom(campaignsRes.data));
+    } catch (err) {
+      console.error("Failed to load pledges:", err);
+      setError(err?.response?.data?.error || "Unable to load pledge records.");
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const summary = useMemo(() => {
+    return rows.reduce(
+      (acc, row) => {
+        const progress = pledgeProgress(row);
+
+        acc.count += 1;
+        acc.pledged += progress.pledged;
+        acc.paid += progress.paid;
+        acc.remaining += progress.remaining;
+
+        if (progress.remaining <= 0) acc.paidCount += 1;
+        else if (progress.paid > 0) acc.partialCount += 1;
+        else acc.openCount += 1;
+
+        return acc;
+      },
+      {
+        count: 0,
+        pledged: 0,
+        paid: 0,
+        remaining: 0,
+        paidCount: 0,
+        partialCount: 0,
+        openCount: 0,
+      }
+    );
+  }, [rows]);
+
+  function updateFilter(key, value) {
+    setFilters((previous) => ({
+      ...previous,
+      [key]: value,
+    }));
+  }
+
+  async function sendReminder(row) {
+    try {
+      setBusyId(`reminder-${row.id}`);
+      setError("");
+      setSuccess("");
+
+      await postFirst(
+        [
+          `/finance/pledges/${row.id}/send-reminder`,
+          `/finance/pledges/${row.id}/reminder`,
+          `/finance/pledge-reminders/${row.id}/send`,
+        ],
+        {
+          include_invoice: true,
+          include_payment_link: true,
+          send_email: true,
+        }
+      );
+
+      setSuccess("Pledge reminder sent with invoice/payment link.");
+      await load();
+    } catch (err) {
+      console.error("Pledge reminder failed:", err);
+      setError(err?.response?.data?.error || "Unable to send pledge reminder.");
+    } finally {
+      setBusyId("");
+    }
+  }
+
+  async function createInvoice(row) {
+    try {
+      setBusyId(`invoice-${row.id}`);
+      setError("");
+      setSuccess("");
+
+      await postFirst(
+        [
+          `/finance/pledges/${row.id}/invoice`,
+          `/finance/pledges/${row.id}/create-invoice`,
+          "/finance/invoices",
+        ],
+        {
+          pledge_id: row.id,
+          campaign_id: row.campaign_id,
+          category: "pledge",
+          payment_type: "pledge",
+          full_name: row.full_name || row.guest_name || row.donor_name,
+          email: row.email || row.donor_email,
+          phone: row.phone,
+          member_id: row.member_id || null,
+          member_no: row.member_no || null,
+          pledged_amount: row.pledged_amount,
+          amount: pledgeProgress(row).remaining,
+          total_amount: pledgeProgress(row).remaining,
+          balance_due: pledgeProgress(row).remaining,
+          create_payment_link: true,
+          send_invoice_email: true,
+          include_payment_link: true,
+        }
+      );
+
+      setSuccess("Pledge invoice created and queued for email.");
+      await load();
+    } catch (err) {
+      console.error("Pledge invoice failed:", err);
+      setError(err?.response?.data?.error || "Unable to create pledge invoice.");
+    } finally {
+      setBusyId("");
+    }
+  }
 
   return (
-    <div className="finance-pledge-panel">
+    <section className="finance-card finance-pledge-panel">
+      <div className="finance-card-header finance-card-header-split">
+        <div>
+          <h3>
+            <Target size={18} strokeWidth={2.1} />
+            Pledge Management
+          </h3>
+          <p>Track promised giving, remaining balances, reminders, invoices, and payment links.</p>
+        </div>
 
-      {/* HEADER */}
+        <div className="finance-toolbar compact">
+          <button
+            type="button"
+            className="finance-btn finance-btn-secondary"
+            onClick={load}
+            disabled={loading}
+          >
+            <RefreshCcw size={15} strokeWidth={2.1} />
+            Refresh
+          </button>
 
-      <div className="finance-pledge-head">
+          <button
+            type="button"
+            className="finance-btn finance-btn-primary"
+            onClick={onCreatePledge}
+          >
+            <Plus size={15} strokeWidth={2.1} />
+            New Pledge
+          </button>
+        </div>
+      </div>
 
-        <div className="finance-pledge-title">
+      {error ? (
+        <div className="finance-alert error">
+          <AlertTriangle size={16} strokeWidth={2.1} />
+          {error}
+        </div>
+      ) : null}
 
-          <Landmark size={20} />
+      {success ? (
+        <div className="finance-alert success">
+          <CheckCircle2 size={16} strokeWidth={2.1} />
+          {success}
+        </div>
+      ) : null}
 
-          <div>
+      <div className="finance-summary-grid">
+        <div className="finance-summary-card">
+          <span>Pledges</span>
+          <h3>{summary.count}</h3>
+          <small>Total visible pledges</small>
+        </div>
 
-            <h2>
-              Pledge Management
-            </h2>
+        <div className="finance-summary-card featured">
+          <span>Pledged</span>
+          <h3>{money(summary.pledged)}</h3>
+          <small>Promise total</small>
+        </div>
 
-            <p>
+        <div className="finance-summary-card">
+          <span>Paid</span>
+          <h3>{money(summary.paid)}</h3>
+          <small>Collected amount</small>
+        </div>
 
-              Member and non-member
-              pledge commitment and
-              payment tracking.
+        <div className="finance-summary-card">
+          <span>Remaining</span>
+          <h3>{money(summary.remaining)}</h3>
+          <small>Outstanding pledge balance</small>
+        </div>
+      </div>
 
-            </p>
-
+      <div className="finance-filter-grid compact">
+        <label className="finance-filter-control finance-filter-search">
+          <span>Search</span>
+          <div className="finance-filter-input-icon">
+            <Search size={15} strokeWidth={2.1} />
+            <input
+              value={filters.search}
+              onChange={(event) => updateFilter("search", event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === "Enter") load();
+              }}
+              placeholder="Donor, member #, email, pledge #..."
+            />
           </div>
+        </label>
 
-        </div>
-
-        <div className="finance-pledge-actions">
-
-          <button
-            className="finance-btn secondary"
-            onClick={onExport}
+        <label className="finance-filter-control">
+          <span>Status</span>
+          <select
+            value={filters.status}
+            onChange={(event) => updateFilter("status", event.target.value)}
           >
+            <option value="">All Statuses</option>
+            <option value="active">Active</option>
+            <option value="partial">Partial</option>
+            <option value="paid">Paid</option>
+            <option value="overdue">Overdue</option>
+            <option value="cancelled">Cancelled</option>
+          </select>
+        </label>
 
-            <Download size={16} />
-
-            Export
-
-          </button>
-
-          <button
-            className="finance-btn primary"
-            onClick={
-              onCreatePledge
-            }
+        <label className="finance-filter-control">
+          <span>Campaign</span>
+          <select
+            value={filters.campaign_id}
+            onChange={(event) => updateFilter("campaign_id", event.target.value)}
           >
+            <option value="">All Campaigns</option>
+            {campaigns.map((campaign) => (
+              <option key={campaign.id} value={campaign.id}>
+                {campaign.title || campaign.campaign_name}
+              </option>
+            ))}
+          </select>
+        </label>
 
-            <Plus size={16} />
-
-            Create Pledge
-
-          </button>
-
-        </div>
-
+        <button
+          type="button"
+          className="finance-btn finance-btn-secondary"
+          onClick={load}
+          disabled={loading}
+        >
+          Apply
+        </button>
       </div>
 
-      {/* KPI */}
-
-      <div className="finance-kpi-grid">
-
-        <div className="finance-kpi-card">
-
-          <span>
-            Total Pledged
-          </span>
-
-          <strong>
-            {money(
-              summary.pledged
-            )}
-          </strong>
-
-        </div>
-
-        <div className="finance-kpi-card">
-
-          <span>
-            Total Paid
-          </span>
-
-          <strong>
-            {money(
-              summary.paid
-            )}
-          </strong>
-
-        </div>
-
-        <div className="finance-kpi-card">
-
-          <span>
-            Remaining
-          </span>
-
-          <strong>
-            {money(
-              summary.remaining
-            )}
-          </strong>
-
-        </div>
-
-      </div>
-
-      {/* TABLE */}
-
-      <table className="finance-pledge-table">
-
-        <thead>
-
-          <tr>
-
-            <th>
-              Donor
-            </th>
-
-            <th>
-              Campaign
-            </th>
-
-            <th>
-              Type
-            </th>
-
-            <th>
-              Pledged
-            </th>
-
-            <th>
-              Paid
-            </th>
-
-            <th>
-              Remaining
-            </th>
-
-            <th>
-              Status
-            </th>
-
-            <th />
-
-          </tr>
-
-        </thead>
-
-        <tbody>
-
-          {!rows.length ? (
+      <div className="finance-table-wrap">
+        <table className="finance-table">
+          <thead>
             <tr>
-
-              <td
-                colSpan="8"
-                className="finance-empty-state"
-              >
-
-                No pledges found.
-
-              </td>
-
+              <th>Donor</th>
+              <th>Campaign</th>
+              <th>Pledged</th>
+              <th>Paid</th>
+              <th>Remaining</th>
+              <th>Progress</th>
+              <th>Status</th>
+              <th>Due Date</th>
+              <th />
             </tr>
-          ) : null}
+          </thead>
 
-          {rows.map(
-            (row) => {
+          <tbody>
+            {!loading && !rows.length ? (
+              <tr>
+                <td colSpan="9" className="finance-empty-state">
+                  No pledge records found.
+                </td>
+              </tr>
+            ) : null}
 
-              const remaining =
-                Number(
-                  row.pledged_amount || 0
-                ) -
-                Number(
-                  row.paid_amount || 0
-                );
+            {loading ? (
+              <tr>
+                <td colSpan="9" className="finance-empty-state">
+                  Loading pledges...
+                </td>
+              </tr>
+            ) : null}
 
-              return (
-                <tr
-                  key={row.id}
-                >
+            {!loading
+              ? rows.map((row) => {
+                  const progress = pledgeProgress(row);
+                  const donor =
+                    row.full_name ||
+                    row.full_name_snapshot ||
+                    row.guest_name ||
+                    row.donor_name ||
+                    "Guest Donor";
 
-                  <td>
+                  return (
+                    <tr key={row.id}>
+                      <td>
+                        <div className="finance-member-cell">
+                          <strong>{donor}</strong>
+                          <span>{row.member_no || row.email || row.phone || "--"}</span>
+                        </div>
+                      </td>
 
-                    <div className="finance-pledge-donor">
+                      <td>{row.campaign_name || row.campaign || "--"}</td>
+                      <td>{money(progress.pledged)}</td>
+                      <td>{money(progress.paid)}</td>
+                      <td>{money(progress.remaining)}</td>
 
-                      <strong>
+                      <td>
+                        <div className="finance-progress-cell">
+                          <div className="finance-progress-wrap">
+                            <div
+                              className="finance-progress-bar"
+                              style={{ width: `${progress.progress}%` }}
+                            />
+                          </div>
+                          <span>{progress.progress.toFixed(0)}%</span>
+                        </div>
+                      </td>
 
-                        {
-                          row.full_name
-                        }
+                      <td>
+                        <span className={`finance-status-badge ${String(row.status || "").toLowerCase()}`}>
+                          {pretty(row.status)}
+                        </span>
+                      </td>
 
-                      </strong>
+                      <td>{formatDate(row.due_date)}</td>
 
-                      <span>
+                      <td>
+                        <div className="finance-row-actions">
+                          <button
+                            type="button"
+                            className="finance-inline-btn"
+                            onClick={() => onViewPledge?.(row)}
+                          >
+                            <FileText size={14} strokeWidth={2.1} />
+                            View
+                          </button>
 
-                        {row.member_no ||
-                          "Non Member"}
+                          {progress.remaining > 0 ? (
+                            <button
+                              type="button"
+                              className="finance-inline-btn"
+                              onClick={() => onApplyPayment?.(row)}
+                            >
+                              <CreditCard size={14} strokeWidth={2.1} />
+                              Pay
+                            </button>
+                          ) : null}
 
-                      </span>
+                          {progress.remaining > 0 ? (
+                            <button
+                              type="button"
+                              className="finance-inline-btn"
+                              onClick={() => createInvoice(row)}
+                              disabled={busyId === `invoice-${row.id}`}
+                            >
+                              <FileText size={14} strokeWidth={2.1} />
+                              Invoice
+                            </button>
+                          ) : null}
 
-                    </div>
-
-                  </td>
-
-                  <td>
-                    {pretty(
-                      row.campaign_name
-                    )}
-                  </td>
-
-                  <td>
-
-                    {row.pay_now
-                      ? "Paid Now"
-                      : "Promise To Pay"}
-
-                  </td>
-
-                  <td>
-                    {money(
-                      row.pledged_amount
-                    )}
-                  </td>
-
-                  <td>
-                    {money(
-                      row.paid_amount
-                    )}
-                  </td>
-
-                  <td>
-                    {money(
-                      remaining
-                    )}
-                  </td>
-
-                  <td>
-
-                    <StatusBadge
-                      status={
-                        row.status
-                      }
-                    />
-
-                  </td>
-
-                  <td>
-
-                    <div className="finance-row-actions">
-
-                      {remaining >
-                      0 ? (
-
-                        <button
-                          className="finance-inline-btn"
-                          onClick={() =>
-                            onApplyPayment?.(
-                              row
-                            )
-                          }
-                        >
-
-                          Apply Payment
-
-                        </button>
-
-                      ) : null}
-
-                      <button
-                        className="finance-inline-btn"
-                        onClick={() =>
-                          onReminder?.(
-                            row
-                          )
-                        }
-                      >
-
-                        <Send
-                          size={14}
-                        />
-
-                        Reminder
-
-                      </button>
-
-                    </div>
-
-                  </td>
-
-                </tr>
-              );
-            }
-          )}
-
-        </tbody>
-
-      </table>
-
-    </div>
-  );
-}
-
-/* =========================================================
-   STATUS
-========================================================= */
-
-function StatusBadge({
-  status,
-}) {
-
-  const value =
-    String(status || "")
-      .toLowerCase();
-
-  return (
-    <span className={`
-      finance-status-badge
-      ${value}
-    `}>
-
-      {value ===
-      "completed" ? (
-
-        <CheckCircle2
-          size={14}
-        />
-
-      ) : (
-
-        <AlertTriangle
-          size={14}
-        />
-
-      )}
-
-      {pretty(status)}
-
-    </span>
+                          {progress.remaining > 0 ? (
+                            <button
+                              type="button"
+                              className="finance-inline-btn"
+                              onClick={() => sendReminder(row)}
+                              disabled={busyId === `reminder-${row.id}`}
+                            >
+                              <Mail size={14} strokeWidth={2.1} />
+                              Reminder
+                            </button>
+                          ) : null}
+                        </div>
+                      </td>
+                    </tr>
+                  );
+                })
+              : null}
+          </tbody>
+        </table>
+      </div>
+    </section>
   );
 }

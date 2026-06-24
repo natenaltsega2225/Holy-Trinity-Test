@@ -1,591 +1,658 @@
-
 // backend/server.js
-
 "use strict";
 
-/* =========================================================
-   ENV
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Environment                                                                */
+/* -------------------------------------------------------------------------- */
 
 require("dotenv").config();
 
-/* =========================================================
-   CORE
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Core                                                                       */
+/* -------------------------------------------------------------------------- */
 
 const path = require("path");
+const crypto = require("crypto");
 const express = require("express");
 const cors = require("cors");
 const helmet = require("helmet");
 const cookieParser = require("cookie-parser");
-const crypto = require("crypto");
-
+const compression = require("compression");
 const app = express();
 
-/* =========================================================
-   DATABASE
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Database                                                                   */
+/* -------------------------------------------------------------------------- */
 
 require("./db");
 
-/* =========================================================
-   ROUTE IMPORTS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Route Loader                                                               */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   STRIPE
-========================================================= */
+function requireRoute(name, modulePath, options = {}) {
+  try {
+    const router = require(modulePath);
 
-const stripeWebhookRoutes =
-  require("./routes/stripeWebhook");
+    if (typeof router !== "function") {
+      throw new TypeError(`${name} must export an Express router.`);
+    }
 
-/* =========================================================
-   AUTH
-========================================================= */
+    return router;
+  } catch (err) {
+    if (options.optional) {
+      console.warn(`Optional route not loaded: ${name}`, err.message);
+      return null;
+    }
 
-const authRoutes =
-  require("./routes/auth");
+    console.error(`Failed loading route: ${name}`);
+    console.error(err);
+    throw err;
+  }
+}
 
-/* =========================================================
-   ACCOUNT
-========================================================= */
+function mountRoute(name, basePath, router) {
+  if (!router) return;
 
-const accountRoutes =
-  require("./routes/accountProfile");
+  try {
+    app.use(basePath, router);
+    console.log(`Mounted ${name} -> ${basePath}`);
+  } catch (err) {
+    console.error(`Failed mounting ${name} -> ${basePath}`);
+    console.error(err);
+    throw err;
+  }
+}
 
-/* =========================================================
-   MEMBERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Optional Services                                                          */
+/* -------------------------------------------------------------------------- */
 
-const membersRoutes =
-  require("./routes/members");
+let financeReminderAutomationService = null;
 
-// const memberBillingRoutes =
-//   require("./routes/memberBilling");
+try {
+  financeReminderAutomationService = require("./services/financeReminderAutomationService");
+} catch (err) {
+  console.warn("Finance reminder automation service not loaded:", err.message);
+}
 
-const memberReceiptsRoutes =
-  require("./routes/memberReceipts");
+let scheduledJobsService = null;
 
-const memberDocumentsRoutes =
-  require("./routes/memberDocuments");
-const memberPaymentsRoutes =
-  require("./routes/memberPayments");
-/* =========================================================
-   ADMIN
-========================================================= */
+try {
+  scheduledJobsService = require("./services/domains/jobs/scheduledJobsService");
+} catch (err) {
+  console.warn("Scheduled jobs service not loaded:", err.message);
+}
 
-const adminMembershipPlansRoutes =
-  require("./routes/adminMembershipPlans");
+function getFinanceReminderStarter() {
+  if (!financeReminderAutomationService) return null;
 
-const adminAccessUsersRoutes =
-  require("./routes/adminAccessUsers");
+  return (
+    financeReminderAutomationService.startFinanceReminderScheduler ||
+    financeReminderAutomationService.startFinanceReminderAutomation ||
+    financeReminderAutomationService.startScheduler ||
+    financeReminderAutomationService.start ||
+    null
+  );
+}
 
-const adminMemberDocumentsRoutes =
-  require("./routes/adminMemberDocuments");
+function getFinanceReminderStopper() {
+  if (!financeReminderAutomationService) return null;
 
-/* =========================================================
-   FINANCE
-========================================================= */
-const financePledgesRoutes = require("./routes/financePledges");
+  return (
+    financeReminderAutomationService.stopFinanceReminderScheduler ||
+    financeReminderAutomationService.stopFinanceReminderAutomation ||
+    financeReminderAutomationService.stopScheduler ||
+    financeReminderAutomationService.stop ||
+    null
+  );
+}
+
+/* -------------------------------------------------------------------------- */
+/* Route Imports                                                              */
+/* -------------------------------------------------------------------------- */
+
+const stripeWebhookRoutes = requireRoute(
+  "stripeWebhookRoutes",
+  "./routes/stripeWebhook"
+);
+
+/* Auth / account */
+const authRoutes = requireRoute("authRoutes", "./routes/auth");
+const accountRoutes = requireRoute("accountRoutes", "./routes/accountProfile");
+
+/* Members */
+const membersRoutes = requireRoute("membersRoutes", "./routes/members");
+
+const memberPaymentsRoutes = requireRoute( "memberPaymentsRoutes","./routes/memberPayments");
+
+const memberReceiptsRoutes = requireRoute(
+  "memberReceiptsRoutes",
+  "./routes/memberReceipts"
+);
+
+const memberInvoicesRoutes = requireRoute(
+  "memberInvoicesRoutes",
+  "./routes/invoices"
+);
+
+const memberDocumentsRoutes = requireRoute(
+  "memberDocumentsRoutes",
+  "./routes/memberDocuments"
+);
+
+const memberStatementsRoutes = requireRoute(
+  "memberStatementsRoutes",
+  "./routes/memberStatements",
+  { optional: true }
+);
+
+/* Admin */
+const adminMembershipPlansRoutes = requireRoute(
+  "adminMembershipPlansRoutes",
+  "./routes/adminMembershipPlans"
+);
+
+const adminAccessUsersRoutes = requireRoute(
+  "adminAccessUsersRoutes",
+  "./routes/adminAccessUsers"
+);
+
+const adminMemberDocumentsRoutes = requireRoute(
+  "adminMemberDocumentsRoutes",
+  "./routes/adminMemberDocuments"
+);
+
+const adminMemberDependentsRoutes = requireRoute(
+  "adminMemberDependentsRoutes",
+  "./routes/adminMemberDependents"
+);
+
+const dashboardThemesRoutes = requireRoute(
+  "dashboardThemesRoutes",
+  "./routes/dashboardThemes"
+);
+
+const auditReportsRoutes = requireRoute(
+  "auditReportsRoutes",
+  "./routes/auditReports",
+  { optional: true }
+);
+const adminServePostsRoutes = require("./routes/adminServePosts");
+// const adminAccessUsersRoutes = require("./routes/adminAccessUsers");
 
 
-const financeDashboardRoutes =
-  require("./routes/financeDashboard");
+/* Finance */
+const executiveKpisRoutes = requireRoute(
+  "executiveKpisRoutes",
+  "./routes/executiveKpis",
+  { optional: true }
+);
 
-const financeMembersRoutes =
-  require("./routes/financeMembers");
+const financeSearchRoutes = requireRoute(
+  "financeSearchRoutes",
+  "./routes/financeSearch"
+);
 
-const financePaymentsRoutes =
-  require("./routes/financePayments");
+const financeDashboardRoutes = requireRoute(
+  "financeDashboardRoutes",
+  "./routes/financeDashboard"
+);
 
-const financeReceiptsRoutes =
-  require("./routes/financeReceipts");
+const financeSettingsRoutes = requireRoute(
+  "financeSettingsRoutes",
+  "./routes/financeSettings",
+  { optional: true }
+);
 
-const financeInvoicesRoutes =
-  require("./routes/financeInvoices");
+const financeNotificationsRoutes = requireRoute(
+  "financeNotificationsRoutes",
+  "./routes/financeNotifications",
+  { optional: true }
+);
 
-const financeReportsRoutes =
-  require("./routes/financeReports");
+const financeAuditLogsRoutes = requireRoute(
+  "financeAuditLogsRoutes",
+  "./routes/financeAuditLogs",
+  { optional: true }
+);
 
-const financeEntriesRoutes =
-  require("./routes/financeEntries");
+const financeExpensesRoutes = requireRoute(
+  "financeExpensesRoutes",
+  "./routes/financeExpenses"
+);
 
-const financeMemberLedgerRoutes =
-  require("./routes/financeMemberLedger");
+const financeMembersRoutes = requireRoute(
+  "financeMembersRoutes",
+  "./routes/financeMembers"
+);
 
-const financeCheckoutRoutes =
-  require("./routes/financeCheckout");
-/* =========================================================
-   FAMILY / DEPENDENTS
-========================================================= */
+const financeRegistrationRoutes = requireRoute(
+  "financeRegistrationRoutes",
+  "./routes/financeRegistration"
+);
 
-const adminMemberDependentsRoutes =
-  require("./routes/adminMemberDependents");
-/* =========================================================
-   PUBLIC RECEIPTS / INVOICES
-========================================================= */
+const financePledgesRoutes = requireRoute(
+  "financePledgesRoutes",
+  "./routes/financePledges"
+);
 
-const receiptsRoutes =
-  require("./routes/receipts");
+const pledgeRemindersRoutes = requireRoute(
+  "pledgeRemindersRoutes",
+  "./routes/pledgeReminders",
+  { optional: true }
+);
 
-const invoicesRoutes =
-  require("./routes/invoices");
+const membershipRemindersRoutes = requireRoute(
+  "membershipRemindersRoutes",
+  "./routes/membershipReminders",
+  { optional: true }
+);
 
+const financePaymentsRoutes = requireRoute(
+  "financePaymentsRoutes",
+  "./routes/financePayments"
+);
 
-/* =========================================================
-   PAYMENTS
-========================================================= */
+const financeReceiptsRoutes = requireRoute(
+  "financeReceiptsRoutes",
+  "./routes/financeReceipts"
+);
 
-const duesRoutes =
-  require("./routes/dues");
+const financeInvoicesRoutes = requireRoute(
+  "financeInvoicesRoutes",
+  "./routes/financeInvoices"
+);
 
-const paymentsRoutes =
-  require("./routes/payments");
+const financeReportsRoutes = requireRoute(
+  "financeReportsRoutes",
+  "./routes/financeReports"
+);
 
-const subscriptionRoutes =
-  require("./routes/subscription");
+const financeEntriesRoutes = requireRoute(
+  "financeEntriesRoutes",
+  "./routes/financeEntries"
+);
 
-const unifiedCheckoutRoutes =
-  require("./routes/unifiedCheckout");
+const financeMemberLedgerRoutes = requireRoute(
+  "financeMemberLedgerRoutes",
+  "./routes/financeMemberLedger"
+);
+const financeReminderSchedulesRoutes =
+  require("./routes/financeReminderSchedules");
+/* Public receipt / invoice */
 
-/* =========================================================
-   SETTINGS
-========================================================= */
+const receiptsRoutes = requireRoute("receiptsRoutes", "./routes/receipts");
 
-const publicSettingsRoutes =
-  require("./routes/publicSettings");
+const publicInvoicesRoutes = requireRoute(
+  "publicInvoicesRoutes",
+  "./routes/publicInvoices"
+);
 
-const dashboardThemesRoutes =
-  require("./routes/dashboardThemes");
+/* Payments / checkout */
+const duesRoutes = requireRoute("duesRoutes", "./routes/dues");
+const paymentsRoutes = requireRoute("paymentsRoutes", "./routes/payments");
 
-const systemSettingsRoutes =
-  require("./routes/systemSettings");
+const subscriptionRoutes = requireRoute(
+  "subscriptionRoutes",
+  "./routes/subscription"
+);
 
-/* =========================================================
-   MEDIA
-========================================================= */
+const unifiedCheckoutRoutes = requireRoute(
+  "unifiedCheckoutRoutes",
+  "./routes/unifiedCheckout"
+);
 
-const mediaRoutes =
-  require("./routes/mediaResources");
+/* Settings */
+const publicSettingsRoutes = requireRoute(
+  "publicSettingsRoutes",
+  "./routes/publicSettings"
+);
 
-/* =========================================================
-   PROGRAMS
-========================================================= */
+const systemSettingsRoutes = requireRoute(
+  "systemSettingsRoutes",
+  "./routes/systemSettings"
+);
 
-const schoolRoutes =
-  require("./routes/school");
+/* Media */
+const mediaRoutes = requireRoute("mediaRoutes", "./routes/mediaResources");
 
-const tripRoutes =
-  require("./routes/trip");
+/* Programs */
+const schoolRoutes = requireRoute("schoolRoutes", "./routes/school");
+const tripRoutes = requireRoute("tripRoutes", "./routes/trip");
 
-const newsEventsRoutes =
-  require("./routes/newsEvents");
+const newsEventsRoutes = requireRoute(
+  "newsEventsRoutes",
+  "./routes/newsEvents"
+);
 
-const programRegistrationsRoutes =
-  require("./routes/programRegistrations");
+const programRegistrationsRoutes = requireRoute(
+  "programRegistrationsRoutes",
+  "./routes/programRegistrations"
+);
 
-/* =========================================================
-   FORMS
-========================================================= */
+/* Forms */
+const formSubmissionRoutes = requireRoute(
+  "formSubmissionRoutes",
+  "./routes/formSubmission"
+);
 
-const formSubmissionRoutes =
-  require("./routes/formSubmission");
+/* Volunteers */
+const servePostsRoutes = requireRoute("servePostsRoutes", "./routes/servePosts");
 
-/* =========================================================
-   VOLUNTEERS
-========================================================= */
+const volunteerApplicationsRoutes = requireRoute(
+  "volunteerApplicationsRoutes",
+  "./routes/volunteerApplications"
+);
 
-const servePostsRoutes =
-  require("./routes/servePosts");
+const volunteerHoursRoutes = requireRoute(
+  "volunteerHoursRoutes",
+  "./routes/volunteerHours"
+);
 
-const volunteerApplicationsRoutes =
-  require("./routes/volunteerApplications");
+const volunteerHoursPublicRoutes = requireRoute(
+  "volunteerHoursPublicRoutes",
+  "./routes/volunteerHoursPublic"
+);
 
-const volunteerHoursRoutes =
-  require("./routes/volunteerHours");
+const volunteerRecognitionRoutes = requireRoute(
+  "volunteerRecognitionRoutes",
+  "./routes/volunteerRecognition"
+);
 
-const volunteerHoursPublicRoutes =
-  require("./routes/volunteerHoursPublic");
+/* Certificates / reconciliation / analytics */
+const certificatesRoutes = requireRoute(
+  "certificatesRoutes",
+  "./routes/certificates"
+);
 
-const volunteerRecognitionRoutes =
-  require("./routes/volunteerRecognition");
+const reconciliationRoutes = requireRoute(
+  "reconciliationRoutes",
+  "./routes/reconciliation"
+);
 
-/* =========================================================
-   CERTIFICATES
-========================================================= */
+const programAnalyticsRoutes = requireRoute(
+  "programAnalyticsRoutes",
+  "./routes/programAnalytics"
+);
 
-const certificatesRoutes =
-  require("./routes/certificates");
-
-/* =========================================================
-   RECONCILIATION
-========================================================= */
-
-const reconciliationRoutes =
-  require("./routes/reconciliation");
-
-/* =========================================================
-   ANALYTICS
-========================================================= */
-
-const programAnalyticsRoutes =
-  require("./routes/programAnalytics");
-
-/* =========================================================
-   APP SETTINGS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* App Settings                                                               */
+/* -------------------------------------------------------------------------- */
 
 app.set("trust proxy", 1);
-
 app.disable("x-powered-by");
+app.use(compression());
+const rateLimit = require("express-rate-limit");
+/* -------------------------------------------------------------------------- */
+/* CORS                                                                       */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   CORS
-========================================================= */
+const allowList = new Set();
 
-const allowList = new Set(
-  (process.env.ORIGIN || "")
+function addCorsOrigins(value) {
+  String(value || "")
     .split(",")
-    .map((v) => v.trim())
+    .map((origin) => origin.trim())
     .filter(Boolean)
-);
+    .forEach((origin) => allowList.add(origin));
+}
 
-allowList.add(
-  "http://localhost:5173"
-);
+addCorsOrigins(process.env.ORIGIN);
+addCorsOrigins(process.env.CORS_ORIGINS);
+addCorsOrigins(process.env.FRONTEND_URL);
+addCorsOrigins(process.env.CLIENT_URL);
+addCorsOrigins(process.env.APP_URL);
+addCorsOrigins(process.env.PUBLIC_APP_URL);
+addCorsOrigins(process.env.BACKEND_PUBLIC_URL);
 
-allowList.add(
-  "http://127.0.0.1:5173"
-);
+[
+  "http://localhost:5173",
+  "http://127.0.0.1:5173",
+  "http://localhost:5174",
+  "http://127.0.0.1:5174",
+  "http://localhost:3000",
+  "http://127.0.0.1:3000",
+].forEach((origin) => allowList.add(origin));
 
-allowList.add(
-  "http://localhost:5174"
-);
-
-allowList.add(
-  "http://localhost:3000"
-);
-
-console.log(
-  "ORIGIN env:",
-  [...allowList].join(",")
-);
+console.log("Allowed CORS origins:", [...allowList].join(","));
 
 app.use(
   cors({
     origin(origin, callback) {
+      if (!origin) return callback(null, true);
+      if (allowList.has(origin)) return callback(null, true);
 
-      if (!origin) {
-        return callback(
-          null,
-          true
-        );
-      }
-
-      if (
-        allowList.has(origin)
-      ) {
-        return callback(
-          null,
-          true
-        );
-      }
-
-      console.error(
-        "CORS BLOCKED:",
-        origin
-      );
-
-      return callback(
-        new Error(
-          `CORS blocked for origin: ${origin}`
-        )
-      );
+      return callback(new Error(`CORS blocked for origin: ${origin}`));
     },
-
     credentials: true,
+    methods: ["GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"],
+    allowedHeaders: [
+      "Authorization",
+      "Content-Type",
+      "X-Requested-With",
+      "X-Request-Id",
+    ],
+    exposedHeaders: ["X-Request-Id"],
   })
 );
 
-/* =========================================================
-   SECURITY
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Security                                                                   */
+/* -------------------------------------------------------------------------- */
 
+// app.use(
+//   helmet({
+//     crossOriginResourcePolicy: {
+//       policy: "cross-origin",
+//     },
+//   })
+// );
 app.use(
   helmet({
+    frameguard: {
+      action: "deny",
+    },
+
+    hsts: {
+      maxAge: 31536000,
+      includeSubDomains: true,
+      preload: true,
+    },
+
     crossOriginResourcePolicy: {
       policy: "cross-origin",
     },
   })
 );
+/* -------------------------------------------------------------------------- */
+/* Request Identity / Logger                                                  */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   REQUEST LOGGER
-========================================================= */
+// app.use((req, res, next) => {
+//   const requestId = req.headers["x-request-id"] || crypto.randomUUID();
 
-app.use(
-  (req, res, next) => {
+//   req.requestId = String(requestId);
+//   req.id = req.requestId;
 
-    const requestId =
-      crypto.randomUUID();
+//   res.setHeader("X-Request-Id", req.requestId);
 
-    req.requestId =
-      requestId;
+//   console.log(
+//     `[${req.requestId}] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`
+//   );
 
-    res.setHeader(
-      "X-Request-Id",
-      requestId
-    );
+//   next();
+// });
+app.use((req, res, next) => {
+  const startedAt = Date.now();
 
+  const requestId =
+    req.headers["x-request-id"] ||
+    crypto.randomUUID();
+
+  req.requestId = String(requestId);
+  req.id = req.requestId;
+
+  res.setHeader(
+    "X-Request-Id",
+    req.requestId
+  );
+
+  res.on("finish", () => {
     console.log(
-      `[${requestId}] ${new Date().toISOString()} ${req.method} ${req.originalUrl}`
+      `[${req.requestId}]`,
+      req.method,
+      req.originalUrl,
+      res.statusCode,
+      `${Date.now() - startedAt}ms`
     );
+  });
 
-    next();
-  }
-);
+  next();
+});
 
-/* =========================================================
-   STRIPE WEBHOOK
-   MUST COME BEFORE BODY PARSERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Stripe Webhook                                                             */
+/* Must be mounted before express.json().                                     */
+/* -------------------------------------------------------------------------- */
 
-app.use(
-  "/api/stripe/webhook",
-  stripeWebhookRoutes
-);
+mountRoute("stripeWebhookRoutes", "/api/stripe/webhook", stripeWebhookRoutes);
 
-/*
-  TEMP COMPATIBILITY
-*/
+/* -------------------------------------------------------------------------- */
+/* Body Parsers                                                               */
+/* -------------------------------------------------------------------------- */
 
 app.use(
-  "//api/stripe/webhook",
-  stripeWebhookRoutes
+  express.json({
+    limit: process.env.JSON_BODY_LIMIT || "25mb",
+    strict: false,
+  })
 );
-
-console.log(
-  "✅ Mounted stripeWebhookRoutes -> /api/stripe/webhook"
-);
-
-/* =========================================================
-   JSON PARSER
-========================================================= */
-
-app.use(
-  (req, res, next) => {
-
-    if (
-      req.originalUrl.startsWith(
-        "/api/stripe/webhook"
-      ) ||
-      req.originalUrl.startsWith(
-        "//api/stripe/webhook"
-      )
-    ) {
-      return next();
-    }
-
-    return express.json({
-      limit: "25mb",
-      strict: false,
-    })(
-      req,
-      res,
-      next
-    );
-  }
-);
-
-/* =========================================================
-   URL ENCODED
-========================================================= */
 
 app.use(
   express.urlencoded({
     extended: true,
-    limit: "25mb",
+    limit: process.env.URLENCODED_BODY_LIMIT || "25mb",
   })
 );
 
-/* =========================================================
-   COOKIES
-========================================================= */
+app.use(cookieParser(process.env.COOKIE_SECRET || undefined));
 
-app.use(
-  cookieParser()
-);
-
-/* =========================================================
-   STATIC FILES
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Static Files                                                               */
+/* -------------------------------------------------------------------------- */
 
 app.use(
   "/uploads",
-  express.static(
-    path.join(
-      __dirname,
-      "uploads"
-    )
-  )
+  express.static(path.join(__dirname, "uploads"), {
+    maxAge: process.env.STATIC_MAX_AGE || "1h",
+  })
 );
 
 app.use(
   "/backend/imgs",
-  express.static(
-    path.join(
-      __dirname,
-      "imgs"
-    )
-  )
+  express.static(path.join(__dirname, "imgs"), {
+    maxAge: process.env.STATIC_MAX_AGE || "1h",
+  })
 );
 
-/* =========================================================
-   HEALTH
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Health                                                                     */
+/* -------------------------------------------------------------------------- */
 
-app.get(
-  "/",
-  (_req, res) => {
+app.get("/", (_req, res) => {
+  return res.json({
+    ok: true,
+    name: "Holy Trinity API",
+  });
+});
 
-    return res.json({
-      ok: true,
-      name:
-        "Holy Trinity API",
-    });
-  }
-);
-
-app.get(
-  "/api",
-  (_req, res) => {
-
-    return res.json({
-      ok: true,
-      api: true,
-    });
-  }
-);
-
-app.get(
-  "/api/health",
-  (_req, res) => {
-
-    return res.json({
-      ok: true,
-      uptime:
-        process.uptime(),
-    });
-  }
-);
-
-/* =========================================================
-   SAFE ROUTE MOUNTER
-========================================================= */
-
-function mountRoute(
-  name,
-  basePath,
-  router
-) {
+app.get("/api", (_req, res) => {
+  return res.json({
+    ok: true,
+    api: true,
+  });
+});
+//health
+// app.get("/api/health", (_req, res) => {
+//   return res.json({
+//     ok: true,
+//     uptime: process.uptime(),
+//     timestamp: new Date().toISOString(),
+//   });
+// });
+app.get("/api/health", async (_req, res) => {
+  const health = {
+    ok: true,
+    service: "Holy Trinity API",
+    environment: process.env.NODE_ENV || "development",
+    uptime_seconds: Math.floor(process.uptime()),
+    timestamp: new Date().toISOString(),
+    memory: {
+      rss_mb: Math.round(process.memoryUsage().rss / 1024 / 1024),
+      heap_used_mb: Math.round(
+        process.memoryUsage().heapUsed / 1024 / 1024
+      ),
+      heap_total_mb: Math.round(
+        process.memoryUsage().heapTotal / 1024 / 1024
+      ),
+    },
+    database: false,
+  };
 
   try {
+    const pool = require("./db");
 
-    if (
-      !router ||
-      typeof router !==
-        "function"
-    ) {
+    await pool.query("SELECT 1");
 
-      console.error(
-        `❌ Invalid router export for ${name}`
-      );
-
-      return;
-    }
-
-    app.use(
-      basePath,
-      router
-    );
-
-    console.log(
-      `✅ Mounted ${name} -> ${basePath}`
-    );
-
+    health.database = true;
   } catch (err) {
-
-    console.error(
-      `❌ Failed mounting ${name}`
-    );
-
-    console.error(err);
+    health.ok = false;
+    health.database = false;
+    health.database_error = err.message;
   }
-}
 
-/* =========================================================
-   AUTH
-========================================================= */
+  return res.status(health.ok ? 200 : 503).json(health);
+});
+//limit
+const loginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-mountRoute(
-  "authRoutes",
-  "/api/auth",
-  authRoutes
-);
+const publicInvoiceLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 100,
+  standardHeaders: true,
+  legacyHeaders: false,
+});
 
-/* =========================================================
-   ACCOUNT
-========================================================= */
+app.use("/api/auth/login", loginLimiter);
+app.use("/api/public/invoices", publicInvoiceLimiter);
+/* -------------------------------------------------------------------------- */
+/* Auth / Account                                                             */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "accountRoutes",
-  "/api/account",
-  accountRoutes
-);
+mountRoute("authRoutes", "/api/auth", authRoutes);
+mountRoute("accountRoutes", "/api/account", accountRoutes);
 
-/* =========================================================
-   MEMBERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Members                                                                    */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "membersRoutes",
-  "/api/members",
-  membersRoutes
-);
+mountRoute("membersRoutes", "/api/members", membersRoutes);
+mountRoute("memberPaymentsRoutes", "/api/member", memberPaymentsRoutes);
+mountRoute("memberLedgerRoutes", "/api/member", financeMemberLedgerRoutes);
+mountRoute("memberReceiptsRoutes", "/api/member/receipts", memberReceiptsRoutes);
+mountRoute("memberInvoicesRoutes", "/api/member/invoices", memberInvoicesRoutes);
+mountRoute("memberDocumentsRoutes", "/api/member/documents", memberDocumentsRoutes);
+mountRoute("memberStatementsRoutes", "/api/member/statements", memberStatementsRoutes);
 
-mountRoute(
-  "memberPaymentsRoutes",
-  "/api/member",
-  memberPaymentsRoutes
-);
-
-mountRoute(
-  "financeMemberLedgerMemberRoutes",
-  "/api/member",
-  financeMemberLedgerRoutes
-);
-
-mountRoute(
-  "memberReceiptsRoutes",
-  "/api/member/receipts",
-  memberReceiptsRoutes
-);
-
-mountRoute(
-  "invoicesRoutes",
-  "/api/member/invoices",
-  invoicesRoutes
-);
-
-mountRoute(
-  "memberDocumentsRoutesMember",
-  "/api/member/documents",
-  memberDocumentsRoutes
-);
-
-/* =========================================================
-   ADMIN
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Admin                                                                      */
+/* -------------------------------------------------------------------------- */
 
 mountRoute(
   "adminMembershipPlansRoutes",
@@ -617,179 +684,176 @@ mountRoute(
   dashboardThemesRoutes
 );
 
-/* =========================================================
-   FINANCE
-========================================================= */
 mountRoute(
-  "financePledgesRoutes",
-  "/api/finance/pledges",
-  financePledgesRoutes
+  "adminAuditReportsRoutes",
+  "/api/admin/audit-reports",
+  auditReportsRoutes
 );
 mountRoute(
-  "financeDashboardRoutes",
-  "/api/finance",
-  financeDashboardRoutes
+  "adminServePostsRoutes",
+  "/api/admin/serve-posts",
+  adminServePostsRoutes
+);
+
+// mountRoute(
+//   "adminAccessUsersRoutes",
+//   "/api/admin/access-users",
+//   adminAccessUsersRoutes
+// );
+/* -------------------------------------------------------------------------- */
+/* Finance                                                                    */
+/* -------------------------------------------------------------------------- */
+
+/*
+  Keep exact finance routes before broad /api/finance routers.
+  This prevents routes like /api/finance/settings and /api/finance/audit-logs
+  from being captured by generic /:id handlers in other finance routers.
+*/
+
+mountRoute(
+  "financeSettingsRoutes",
+  "/api/finance/settings",
+  financeSettingsRoutes
 );
 
 mountRoute(
-  "financeMembersRoutes",
-  "/api/finance",
-  financeMembersRoutes
+  "financeNotificationsRoutes",
+  "/api/finance/notifications",
+  financeNotificationsRoutes
 );
 
 mountRoute(
-  "financePaymentsRoutes",
-  "/api/finance/payments",
-  financePaymentsRoutes
+  "financeAuditLogsRoutes",
+  "/api/finance/audit-logs",
+  financeAuditLogsRoutes
 );
 
 mountRoute(
-  "financeReceiptsRoutes",
-  "/api/finance",
-  financeReceiptsRoutes
+  "financeAuditLogsRoutesAlias",
+  "/api/finance/audit",
+  financeAuditLogsRoutes
 );
 
 mountRoute(
-  "financeInvoicesRoutes",
-  "/api/finance/invoices",
-  financeInvoicesRoutes
+  "financeAuditReportsAlias",
+  "/api/finance/reports/audit",
+  financeAuditLogsRoutes
 );
 
 mountRoute(
-  "financeInvoicesRoutesAlias",
-  "/api/invoices",
-  financeInvoicesRoutes
+  "financeAuditReportsRoutes",
+  "/api/finance/audit-reports",
+  auditReportsRoutes
 );
 
 mountRoute(
-  "receiptsRoutes",
-  "/api/receipts",
-  receiptsRoutes
+  "executiveKpisRoutes",
+  "/api/finance/executive-kpis",
+  executiveKpisRoutes
 );
 
 mountRoute(
-  "invoicesRoutes",
-  "/api/member/invoices",
-  invoicesRoutes
+  "membershipRemindersRoutes",
+  "/api/finance/membership-reminders",
+  membershipRemindersRoutes
 );
 
 mountRoute(
-  "financeReportsRoutes",
-  "/api/finance/reports",
-  financeReportsRoutes
-);
-mountRoute(
-  "financeMemberLedgerMemberRoutes",
-  "/api/member",
-  financeMemberLedgerRoutes
-);
-mountRoute(
-  "financeEntriesRoutes",
-  "/api/finance",
-  financeEntriesRoutes
+  "pledgeRemindersRoutes",
+  "/api/finance/pledge-reminders",
+  pledgeRemindersRoutes
 );
 
 mountRoute(
-  "financeMemberLedgerRoutes",
-  "/api/finance",
-  financeMemberLedgerRoutes
+  "financeRegistrationRoutes",
+  "/api/finance/registration",
+  financeRegistrationRoutes
 );
 
-mountRoute(
-  "financeCheckoutRoutes",
-  "/api/finance",
-  financeCheckoutRoutes
+mountRoute("financePledgesRoutes", "/api/finance/pledges", financePledgesRoutes);
+mountRoute("financePaymentsRoutes", "/api/finance/payments", financePaymentsRoutes);
+mountRoute("financeReportsRoutes", "/api/finance/reports", financeReportsRoutes);
+
+
+/* Finance Reminder Schedules */
+app.use(
+  "/api/finance/reminder-schedules",
+  financeReminderSchedulesRoutes
 );
-/* =========================================================
-   FAMILY / DEPENDENTS
-========================================================= */
+
+console.log(
+  "Mounted financeReminderSchedulesRoutes -> /api/finance/reminder-schedules"
+)
+/*
+  Expenses must stay after exact finance routes because the expenses router
+  also supports dynamic /:id paths. It still serves:
+  - GET/POST /api/finance/expenses
+  - GET/POST /api/finance/reimbursements
+  - GET/POST /api/finance/expenses/categories
+*/
+mountRoute("financeExpensesRoutes", "/api/finance", financeExpensesRoutes);
+
+/*
+  Broad /api/finance routers are intentionally mounted later.
+*/
+mountRoute("financeSearchRoutes", "/api/finance", financeSearchRoutes);
+mountRoute("financeDashboardRoutes", "/api/finance", financeDashboardRoutes);
+mountRoute("financeMembersRoutes", "/api/finance", financeMembersRoutes);
+mountRoute("financeReceiptsRoutes", "/api/finance", financeReceiptsRoutes);
+mountRoute("financeInvoicesRoutes", "/api/finance", financeInvoicesRoutes);
+mountRoute("financeInvoicesRoutesAlias", "/api/invoices", financeInvoicesRoutes);
+mountRoute("financeEntriesRoutes", "/api/finance", financeEntriesRoutes);
+mountRoute("financeMemberLedgerRoutes", "/api/finance", financeMemberLedgerRoutes);
+
+mountRoute(
+  "financeMemberStatementsRoutes",
+  "/api/finance/statements",
+  memberStatementsRoutes
+);
 
 mountRoute(
   "adminMemberDependentsRoutes",
   "/api/finance",
   adminMemberDependentsRoutes
 );
-/* =========================================================
-   PAYMENTS
-========================================================= */
 
-mountRoute(
-  "duesRoutes",
-  "/api/dues",
-  duesRoutes
-);
+/* -------------------------------------------------------------------------- */
+/* Public Receipts / Public Invoices                                          */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "paymentsRoutes",
-  "/api/payments",
-  paymentsRoutes
-);
+mountRoute("receiptsRoutes", "/api/receipts", receiptsRoutes);
+mountRoute("publicInvoicesRoutes", "/api/public/invoices", publicInvoicesRoutes);
 
-mountRoute(
-  "subscriptionRoutes",
-  "/api/subscription",
-  subscriptionRoutes
-);
+/* -------------------------------------------------------------------------- */
+/* Payments / Checkout                                                        */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "unifiedCheckoutRoutes",
-  "/api/checkout",
-  unifiedCheckoutRoutes
-);
+mountRoute("duesRoutes", "/api/dues", duesRoutes);
+mountRoute("paymentsRoutes", "/api/payments", paymentsRoutes);
+mountRoute("subscriptionRoutes", "/api/subscription", subscriptionRoutes);
+mountRoute("unifiedCheckoutRoutes", "/api/checkout", unifiedCheckoutRoutes);
 
-/* =========================================================
-   SETTINGS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Settings                                                                   */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "publicSettingsRoutes",
-  "/api/settings",
-  publicSettingsRoutes
-);
+mountRoute("publicSettingsRoutes", "/api/settings", publicSettingsRoutes);
+mountRoute("systemSettingsRoutes", "/api/system-settings", systemSettingsRoutes);
 
-mountRoute(
-  "systemSettingsRoutes",
-  "/api/system-settings",
-  systemSettingsRoutes
-);
+/* -------------------------------------------------------------------------- */
+/* Media                                                                      */
+/* -------------------------------------------------------------------------- */
 
-/* =========================================================
-   MEDIA
-========================================================= */
+mountRoute("mediaRoutes", "/api/media", mediaRoutes);
+mountRoute("mediaRoutesAdmin", "/api/admin", mediaRoutes);
 
-mountRoute(
-  "mediaRoutes",
-  "/api/media",
-  mediaRoutes
-);
+/* -------------------------------------------------------------------------- */
+/* Programs                                                                   */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "mediaRoutesAdmin",
-  "/api/admin",
-  mediaRoutes
-);
-
-/* =========================================================
-   PROGRAMS
-========================================================= */
-
-mountRoute(
-  "schoolRoutes",
-  "/api/school",
-  schoolRoutes
-);
-
-mountRoute(
-  "tripRoutes",
-  "/api/trip",
-  tripRoutes
-);
-
-mountRoute(
-  "newsEventsRoutes",
-  "/api/news-events",
-  newsEventsRoutes
-);
+mountRoute("schoolRoutes", "/api/school", schoolRoutes);
+mountRoute("tripRoutes", "/api/trip", tripRoutes);
+mountRoute("newsEventsRoutes", "/api/news-events", newsEventsRoutes);
 
 mountRoute(
   "programRegistrationsRoutes",
@@ -797,25 +861,17 @@ mountRoute(
   programRegistrationsRoutes
 );
 
-/* =========================================================
-   FORMS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Forms                                                                      */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "formSubmissionRoutes",
-  "/api/forms",
-  formSubmissionRoutes
-);
+mountRoute("formSubmissionRoutes", "/api/forms", formSubmissionRoutes);
 
-/* =========================================================
-   VOLUNTEERS
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Volunteers                                                                 */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "servePostsRoutes",
-  "/api/serve-posts",
-  servePostsRoutes
-);
+mountRoute("servePostsRoutes", "/api/serve-posts", servePostsRoutes);
 
 mountRoute(
   "volunteerApplicationsRoutes",
@@ -823,11 +879,7 @@ mountRoute(
   volunteerApplicationsRoutes
 );
 
-mountRoute(
-  "volunteerHoursRoutes",
-  "/api/volunteers/hours",
-  volunteerHoursRoutes
-);
+mountRoute("volunteerHoursRoutes", "/api/volunteers/hours", volunteerHoursRoutes);
 
 mountRoute(
   "volunteerHoursPublicRoutes",
@@ -841,29 +893,12 @@ mountRoute(
   volunteerRecognitionRoutes
 );
 
-/* =========================================================
-   CERTIFICATES
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* Certificates / Reconciliation / Analytics                                  */
+/* -------------------------------------------------------------------------- */
 
-mountRoute(
-  "certificatesRoutes",
-  "/api/certificates",
-  certificatesRoutes
-);
-
-/* =========================================================
-   RECONCILIATION
-========================================================= */
-
-mountRoute(
-  "reconciliationRoutes",
-  "/api/reconciliation",
-  reconciliationRoutes
-);
-
-/* =========================================================
-   ANALYTICS
-========================================================= */
+mountRoute("certificatesRoutes", "/api/certificates", certificatesRoutes);
+mountRoute("reconciliationRoutes", "/api/reconciliation", reconciliationRoutes);
 
 mountRoute(
   "programAnalyticsRoutes",
@@ -871,91 +906,172 @@ mountRoute(
   programAnalyticsRoutes
 );
 
-/* =========================================================
-   API 404
-========================================================= */
+/* -------------------------------------------------------------------------- */
+/* API 404                                                                    */
+/* -------------------------------------------------------------------------- */
 
-app.use(
-  "/api",
-  (req, res) => {
+app.use("/api", (req, res) => {
+  return res.status(404).json({
+    ok: false,
+    error: "API Route Not Found",
+    path: req.originalUrl,
+  });
+});
 
-    return res.status(404).json({
-      ok: false,
-      error:
-        "API Route Not Found",
-      path:
-        req.originalUrl,
-    });
+/* -------------------------------------------------------------------------- */
+/* Global Error Handler                                                       */
+/* -------------------------------------------------------------------------- */
+
+app.use((err, req, res, _next) => {
+  const status =
+    String(err.message || "").startsWith("CORS blocked")
+      ? 403
+      : err.status || err.statusCode || 500;
+
+  console.error(`[${req.requestId || "NO_REQUEST_ID"}]`, err);
+
+  return res.status(status).json({
+    ok: false,
+    error:
+      status === 500
+        ? "Internal Server Error"
+        : err.message || "Request failed.",
+  });
+});
+
+/* -------------------------------------------------------------------------- */
+/* Process Errors                                                             */
+/* -------------------------------------------------------------------------- */
+
+process.on("uncaughtException", (err) => {
+  console.error("UNCAUGHT EXCEPTION:", err);
+});
+
+process.on("unhandledRejection", (reason) => {
+  console.error("UNHANDLED REJECTION:", reason);
+});
+
+/* -------------------------------------------------------------------------- */
+/* Start Server                                                               */
+/* -------------------------------------------------------------------------- */
+
+const PORT = Number(process.env.PORT || 5000);
+let server = null;
+
+async function startSchedulers() {
+  const starter = getFinanceReminderStarter();
+
+  if (typeof starter === "function") {
+    try {
+      const result = await starter();
+
+      console.log("Finance reminder scheduler:", {
+        enabled: result?.enabled !== false,
+        already_started: Boolean(result?.already_started),
+      });
+    } catch (err) {
+      console.error("Finance reminder scheduler failed:", err);
+    }
   }
-);
 
-/* =========================================================
-   GLOBAL ERROR HANDLER
-========================================================= */
+  if (
+    scheduledJobsService &&
+    typeof scheduledJobsService.registerScheduledJobs === "function"
+  ) {
+    try {
+      const result = scheduledJobsService.registerScheduledJobs();
 
-app.use(
-  (
-    err,
-    req,
-    res,
-    _next
-  ) => {
-
-    console.error(
-      `[${req.requestId || "NO_REQUEST_ID"}]`,
-      err
-    );
-
-    return res.status(500).json({
-      ok: false,
-
-      error:
-        err.message ||
-        "Internal Server Error",
-    });
+      console.log("Scheduled jobs:", {
+        enabled: result?.enabled !== false,
+        registered_jobs: result?.jobs?.length || 0,
+      });
+    } catch (err) {
+      console.error("Scheduled jobs failed:", err);
+    }
   }
-);
+}
 
-/* =========================================================
-   PROCESS ERRORS
-========================================================= */
+function startServer() {
+  if (server) return server;
 
-process.on(
-  "uncaughtException",
-  (err) => {
+  server = app.listen(PORT, "0.0.0.0", () => {
+    console.log(`Server running on port ${PORT}`);
+    startSchedulers();
+  });
 
-    console.error(
-      "UNCAUGHT EXCEPTION:",
-      err
-    );
+  server.keepAliveTimeout = Number(
+    process.env.SERVER_KEEP_ALIVE_TIMEOUT_MS || 65000
+  );
+
+  server.headersTimeout = Number(
+    process.env.SERVER_HEADERS_TIMEOUT_MS || 66000
+  );
+
+  server.on("error", (err) => {
+    console.error("Server listen error:", err);
+    throw err;
+  });
+
+  return server;
+}
+
+/* -------------------------------------------------------------------------- */
+/* Graceful Shutdown                                                          */
+/* -------------------------------------------------------------------------- */
+
+let shuttingDown = false;
+
+async function shutdown(signal) {
+  if (shuttingDown) return;
+
+  shuttingDown = true;
+
+  console.log(`${signal} received. Closing server...`);
+
+  const stopper = getFinanceReminderStopper();
+
+  if (typeof stopper === "function") {
+    try {
+      await stopper();
+    } catch (err) {
+      console.error("Finance reminder scheduler stop failed:", err);
+    }
   }
-);
 
-process.on(
-  "unhandledRejection",
-  (reason) => {
-
-    console.error(
-      "UNHANDLED REJECTION:",
-      reason
-    );
+  if (
+    scheduledJobsService &&
+    typeof scheduledJobsService.stopScheduledJobs === "function"
+  ) {
+    try {
+      scheduledJobsService.stopScheduledJobs();
+    } catch (err) {
+      console.error("Scheduled jobs stop failed:", err);
+    }
   }
-);
 
-/* =========================================================
-   START SERVER
-========================================================= */
-
-const PORT =
-  process.env.PORT || 5000;
-
-app.listen(
-  PORT,
-  "0.0.0.0",
-  () => {
-
-    console.log(
-      `🚀 Server running on port ${PORT}`
-    );
+  if (!server) {
+    process.exit(0);
+    return;
   }
-);
+
+  server.close(() => {
+    console.log("HTTP server closed.");
+    process.exit(0);
+  });
+
+  setTimeout(() => {
+    console.error("Forced shutdown after timeout.");
+    process.exit(1);
+  }, Number(process.env.SHUTDOWN_TIMEOUT_MS || 15000)).unref();
+}
+
+if (require.main === module) {
+  startServer();
+
+  process.on("SIGTERM", () => shutdown("SIGTERM"));
+  process.on("SIGINT", () => shutdown("SIGINT"));
+}
+
+module.exports = app;
+module.exports.startServer = startServer;
+module.exports.shutdown = shutdown;

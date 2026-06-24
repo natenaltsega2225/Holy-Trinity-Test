@@ -1,370 +1,245 @@
 // backend/routes/financeAuditLogs.js
 "use strict";
 
-const express =
-  require("express");
+const express = require("express");
+
+const pool = require("../db");
 
 const {
   authRequired,
   requireRole,
-} = require(
-  "../middleware/auth"
-);
+} = require("../middleware/auth");
 
-const pool =
-  require("../db");
+const router = express.Router();
 
-const router =
-  express.Router();
+const FINANCE_ROLES = ["finance", "admin", "super_admin", "reconciliation"];
+const columnCache = new Map();
 
-/* =========================================================
-   SECURITY
-========================================================= */
+function sqlId(name) {
+  return `\`${String(name).replaceAll("`", "``")}\``;
+}
 
-router.use(
-  authRequired
-);
+function intValue(value, fallback = 25, min = 1, max = 250) {
+  const n = Number.parseInt(value, 10);
+  if (!Number.isFinite(n)) return fallback;
+  return Math.min(Math.max(n, min), max);
+}
 
-router.use(
-  requireRole(
-    "finance",
-    "admin",
-    "super_admin",
-    "reconciliation"
-  )
-);
+function clean(value, max = 255) {
+  return String(value ?? "").trim().slice(0, max);
+}
 
-/* =========================================================
-   GET AUDIT LOGS
-========================================================= */
+async function tableColumns(table) {
+  if (columnCache.has(table)) return columnCache.get(table);
 
-router.get(
-  "/",
+  try {
+    const [rows] = await pool.query(`SHOW COLUMNS FROM ${sqlId(table)}`);
+    const columns = new Set(rows.map((row) => row.Field));
+    columnCache.set(table, columns);
+    return columns;
+  } catch (_err) {
+    const columns = new Set();
+    columnCache.set(table, columns);
+    return columns;
+  }
+}
 
-  async (
-    req,
-    res
-  ) => {
+function pick(columns, names, fallback = "NULL") {
+  const column = names.find((name) => columns.has(name));
+  return column ? sqlId(column) : fallback;
+}
 
-    try {
+function textExpr(columns, names, fallback = "'--'") {
+  return `COALESCE(${pick(columns, names, "NULL")}, ${fallback})`;
+}
 
-      const where =
-        [];
+function dateExpr(columns) {
+  return pick(columns, ["created_at", "event_time", "timestamp", "logged_at"], "NULL");
+}
 
-      const params =
-        [];
+function jsonResponse(res, payload) {
+  return res.json({
+    ok: true,
+    ...payload,
+  });
+}
 
-      if (
-        req.query.search
-      ) {
+function errorResponse(res, err, fallback) {
+  console.error(fallback, err);
+  return res.status(err.status || err.statusCode || 500).json({
+    ok: false,
+    error: err.status || err.statusCode ? err.message : fallback,
+  });
+}
 
-        where.push(`
-          (
-            action_type LIKE ?
-            OR entity_type LIKE ?
-            OR ip_address LIKE ?
-          )
-        `);
+router.use(authRequired);
+router.use(requireRole(...FINANCE_ROLES));
 
-        const q =
-          `%${req.query.search}%`;
+router.get("/health/check", (_req, res) => {
+  return jsonResponse(res, {
+    module: "financeAuditLogs",
+    version: "enterprise",
+    protected: true,
+    endpoint: "/api/finance/audit-logs",
+    timestamp: new Date().toISOString(),
+  });
+});
 
-        params.push(
-          q,
-          q,
-          q
-        );
-      }
+async function listAuditRows(req, res) {
+  try {
+    const columns = await tableColumns("tbl_audit_logs");
 
-      if (
-        req.query.actor_id
-      ) {
-
-        where.push(
-          "actor_id = ?"
-        );
-
-        params.push(
-          req.query.actor_id
-        );
-      }
-
-      if (
-        req.query.action_type
-      ) {
-
-        where.push(
-          "action_type LIKE ?"
-        );
-
-        params.push(
-          `%${req.query.action_type}%`
-        );
-      }
-
-      if (
-        req.query.entity_type
-      ) {
-
-        where.push(
-          "entity_type LIKE ?"
-        );
-
-        params.push(
-          `%${req.query.entity_type}%`
-        );
-      }
-
-      if (
-        req.query.date_from
-      ) {
-
-        where.push(
-          "DATE(created_at) >= DATE(?)"
-        );
-
-        params.push(
-          req.query.date_from
-        );
-      }
-
-      if (
-        req.query.date_to
-      ) {
-
-        where.push(
-          "DATE(created_at) <= DATE(?)"
-        );
-
-        params.push(
-          req.query.date_to
-        );
-      }
-
-      const whereSql =
-        where.length
-          ? `WHERE ${where.join(" AND ")}`
-          : "";
-
-      const [rows] =
-        await pool.query(
-          `
-          SELECT *
-          FROM tbl_audit_logs
-          ${whereSql}
-          ORDER BY created_at DESC
-          LIMIT 500
-          `,
-          params
-        );
-
-      const [[stats]] =
-        await pool.query(
-          `
-          SELECT
-            COUNT(*) AS total,
-            SUM(CASE WHEN action_type LIKE '%reverse%' THEN 1 ELSE 0 END) AS reversals,
-            SUM(CASE WHEN action_type LIKE '%export%' THEN 1 ELSE 0 END) AS exports,
-            SUM(CASE WHEN action_type LIKE '%reconcile%' THEN 1 ELSE 0 END) AS reconciliations
-          FROM tbl_audit_logs
-          `
-        );
-
-      return res.json({
-
-        ok: true,
-
-        rows,
-
-        stats,
-      });
-
-    } catch (err) {
-
-      console.error(
-        "finance audit logs error:",
-        err
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        error:
-          "Failed to load audit logs.",
+    if (!columns.size) {
+      return jsonResponse(res, {
+        rows: [],
+        audit_logs: [],
+        total: 0,
+        page: 1,
+        pageSize: 25,
+        message: "Audit table is not available.",
       });
     }
-  }
-);
 
-/* =========================================================
-   SINGLE AUDIT LOG
-========================================================= */
+    const page = intValue(req.query.page, 1, 1, 100000);
+    const pageSize = intValue(req.query.pageSize || req.query.limit, 25, 1, 250);
+    const offset = (page - 1) * pageSize;
 
-router.get(
-  "/:id",
+    const where = [];
+    const params = [];
 
-  async (
-    req,
-    res
-  ) => {
+    const actionColumn = pick(columns, ["action", "event_type"], null);
+    const entityColumn = pick(columns, ["entity", "entity_type", "module"], null);
+    const actorColumn = pick(columns, ["actor_id", "user_id"], null);
+    const createdColumn = dateExpr(columns);
 
-    try {
+    if (req.query.action && actionColumn) {
+      where.push(`${actionColumn} = ?`);
+      params.push(clean(req.query.action, 120));
+    }
 
-      const [[row]] =
-        await pool.query(
-          `
-          SELECT *
-          FROM tbl_audit_logs
-          WHERE id = ?
-          LIMIT 1
-          `,
-          [
-            req.params.id,
-          ]
-        );
+    if ((req.query.entity || req.query.entity_type) && entityColumn) {
+      where.push(`${entityColumn} = ?`);
+      params.push(clean(req.query.entity || req.query.entity_type, 120));
+    }
 
-      if (!row) {
+    if (req.query.actor_id && actorColumn) {
+      where.push(`${actorColumn} = ?`);
+      params.push(req.query.actor_id);
+    }
 
-        return res.status(404).json({
+    if ((req.query.from || req.query.date_from) && createdColumn !== "NULL") {
+      where.push(`DATE(${createdColumn}) >= ?`);
+      params.push(req.query.from || req.query.date_from);
+    }
 
-          ok: false,
+    if ((req.query.to || req.query.date_to) && createdColumn !== "NULL") {
+      where.push(`DATE(${createdColumn}) <= ?`);
+      params.push(req.query.to || req.query.date_to);
+    }
 
-          error:
-            "Audit log not found.",
-        });
+    const search = clean(req.query.search || req.query.q, 120);
+
+    if (search) {
+      const searchable = [
+        "actor_email",
+        "user_email",
+        "actor_name",
+        "user_name",
+        "action",
+        "event_type",
+        "entity",
+        "entity_type",
+        "module",
+        "description",
+        "message",
+        "notes",
+        "reference_no",
+        "ip_address",
+      ].filter((column) => columns.has(column));
+
+      if (searchable.length) {
+        where.push(`(${searchable.map((column) => `${sqlId(column)} LIKE ?`).join(" OR ")})`);
+        params.push(...searchable.map(() => `%${search}%`));
       }
-
-      return res.json({
-
-        ok: true,
-
-        row,
-      });
-
-    } catch (err) {
-
-      console.error(
-        "single audit log error:",
-        err
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        error:
-          "Failed to load audit log.",
-      });
     }
+
+    const whereSql = where.length ? `WHERE ${where.join(" AND ")}` : "";
+
+    const selectSql = `
+      SELECT
+        id,
+        ${textExpr(columns, ["action", "event_type"], "'unknown'")} AS action,
+        ${textExpr(columns, ["event_type", "action"], "'unknown'")} AS event_type,
+        ${textExpr(columns, ["entity", "entity_type", "module"], "'system'")} AS entity,
+        ${textExpr(columns, ["entity_type", "entity", "module"], "'system'")} AS entity_type,
+        ${pick(columns, ["entity_id", "record_id", "target_id"], "NULL")} AS entity_id,
+        ${pick(columns, ["actor_id", "user_id"], "NULL")} AS actor_id,
+        ${textExpr(columns, ["actor_name", "user_name"], "'--'")} AS actor_name,
+        ${textExpr(columns, ["actor_email", "user_email", "email"], "'--'")} AS actor_email,
+        ${textExpr(columns, ["actor_role", "role"], "'--'")} AS actor_role,
+        ${textExpr(columns, ["description", "message", "notes"], "'--'")} AS description,
+        ${textExpr(columns, ["ip_address", "ip"], "'--'")} AS ip_address,
+        ${textExpr(columns, ["user_agent"], "'--'")} AS user_agent,
+        ${textExpr(columns, ["severity"], "'info'")} AS severity,
+        ${textExpr(columns, ["status"], "'recorded'")} AS status,
+        ${textExpr(columns, ["reference_no", "reference"], "'--'")} AS reference_no,
+        ${pick(columns, ["metadata_json", "details_json"], "NULL")} AS metadata_json,
+        ${createdColumn} AS created_at
+      FROM tbl_audit_logs
+      ${whereSql}
+    `;
+
+    const [rows] = await pool.query(
+      `
+      ${selectSql}
+      ORDER BY
+        ${createdColumn === "NULL" ? "id" : createdColumn} DESC,
+        id DESC
+      LIMIT ?
+      OFFSET ?
+      `,
+      [...params, pageSize, offset]
+    );
+
+    const [countRows] = await pool.query(
+      `
+      SELECT COUNT(*) AS total
+      FROM tbl_audit_logs
+      ${whereSql}
+      `,
+      params
+    );
+
+    const total = Number(countRows?.[0]?.total || rows.length || 0);
+
+    return jsonResponse(res, {
+      rows,
+      audit_logs: rows,
+      total,
+      page,
+      pageSize,
+    });
+  } catch (err) {
+    return errorResponse(res, err, "Failed to load finance audit logs.");
   }
-);
+}
 
-/* =========================================================
-   AUDIT STATS
-========================================================= */
+router.get("/", listAuditRows);
 
-router.get(
-  "/stats/overview",
+/*
+  Compatibility paths if this router is mounted at /api/finance instead of
+  /api/finance/audit-logs. Keeping these here prevents old frontend builds from
+  falling through to 404 while the app is deployed.
+*/
+router.get("/audit-logs", listAuditRows);
+router.get("/audit", listAuditRows);
+router.get("/reports/audit", listAuditRows);
 
-  async (
-    req,
-    res
-  ) => {
+router.all("*", (_req, res) => {
+  return res.status(405).json({
+    ok: false,
+    error: "Method Not Allowed",
+  });
+});
 
-    try {
-
-      const [[stats]] =
-        await pool.query(
-          `
-          SELECT
-            COUNT(*) AS total,
-            COUNT(DISTINCT actor_id) AS actors,
-            COUNT(DISTINCT entity_type) AS entities,
-            MAX(created_at) AS latest_activity
-          FROM tbl_audit_logs
-          `
-        );
-
-      return res.json({
-
-        ok: true,
-
-        stats,
-      });
-
-    } catch (err) {
-
-      console.error(
-        "audit stats error:",
-        err
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        error:
-          "Failed to load audit stats.",
-      });
-    }
-  }
-);
-
-/* =========================================================
-   EXPORT
-========================================================= */
-
-router.get(
-  "/export",
-
-  async (
-    req,
-    res
-  ) => {
-
-    try {
-
-      const [rows] =
-        await pool.query(
-          `
-          SELECT *
-          FROM tbl_audit_logs
-          ORDER BY created_at DESC
-          LIMIT 5000
-          `
-        );
-
-      return res.json({
-
-        ok: true,
-
-        exported_at:
-          new Date().toISOString(),
-
-        total:
-          rows.length,
-
-        rows,
-      });
-
-    } catch (err) {
-
-      console.error(
-        "audit export error:",
-        err
-      );
-
-      return res.status(500).json({
-
-        ok: false,
-
-        error:
-          "Failed to export audit logs.",
-      });
-    }
-  }
-);
-
-module.exports =
-  router;
+module.exports = router;

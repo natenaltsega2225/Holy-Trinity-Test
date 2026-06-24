@@ -1,258 +1,475 @@
 // frontend/src/components/FinanceDashboard/components/FinanceMemberLookup.jsx
 
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Search,
+  User,
+  UserRound,
+  Users,
+  X,
+} from "lucide-react";
 
 import api from "../../api";
+import "../../../styles/finance-enterprise.css";
 
-//import "../../../styles/finance-dashboard.css";
+function clean(value) {
+  return String(value ?? "").trim();
+}
 
-/* =========================================================
-   HELPERS
-========================================================= */
+function normalizeRows(payload) {
+  if (Array.isArray(payload)) return payload;
 
-function displayName(row) {
-  return (
-    row?.full_name ||
-    row?.name ||
-    row?.email ||
-    "Unknown"
+  const candidates = [
+    payload?.rows,
+    payload?.data,
+    payload?.members,
+    payload?.items,
+    payload?.results,
+    payload?.data?.rows,
+    payload?.data?.members,
+    payload?.data?.items,
+  ];
+
+  for (const candidate of candidates) {
+    if (Array.isArray(candidate)) return candidate;
+  }
+
+  return [];
+}
+
+function firstValue(row, keys, fallback = "") {
+  for (const key of keys) {
+    const value = row?.[key];
+
+    if (value !== undefined && value !== null && clean(value) !== "") {
+      return value;
+    }
+  }
+
+  return fallback;
+}
+
+function memberId(member) {
+  return firstValue(member, ["id", "member_id"], "");
+}
+
+function memberNo(member) {
+  return firstValue(member, ["member_no", "member_number"], "--");
+}
+
+function fullName(member) {
+  return firstValue(
+    member,
+    ["full_name", "name", "display_name", "member_name"],
+    "Unnamed Member"
   );
 }
 
-function memberNo(row) {
-  return (
-    row?.member_no ||
-    row?.membership_id ||
-    row?.member_number ||
-    "--"
-  );
+function email(member) {
+  return firstValue(member, ["email", "member_email"], "");
 }
 
-/* =========================================================
-   COMPONENT
-========================================================= */
+function phone(member) {
+  return firstValue(member, ["phone", "mobile", "member_phone"], "");
+}
+
+function status(member) {
+  return firstValue(member, ["membership_status", "status", "member_status"], "");
+}
+
+function address(member) {
+  const line = firstValue(member, ["address", "street_address"], "");
+  const city = firstValue(member, ["city"], "");
+  const state = firstValue(member, ["state"], "");
+  const zip = firstValue(member, ["zip", "zipcode", "postal_code"], "");
+
+  return [line, city, state, zip].filter(Boolean).join(", ");
+}
+
+function buildMemberSnapshot(member) {
+  if (!member) return null;
+
+  return {
+    id: memberId(member),
+    member_id: memberId(member),
+    member_no: memberNo(member),
+    full_name: fullName(member),
+    email: email(member),
+    phone: phone(member),
+    status: status(member),
+    address: address(member),
+    raw: member,
+  };
+}
+
+function StatusBadge({ value }) {
+  const text = clean(value);
+
+  if (!text) return null;
+
+  const normalized = text.toLowerCase();
+  const tone =
+    normalized.includes("active") || normalized.includes("paid")
+      ? "success"
+      : normalized.includes("pending") || normalized.includes("open")
+        ? "warning"
+        : normalized.includes("inactive") || normalized.includes("overdue")
+          ? "danger"
+          : "neutral";
+
+  return (
+    <span className={`finance-status-badge ${tone}`}>
+      {text.replaceAll("_", " ")}
+    </span>
+  );
+}
 
 export default function FinanceMemberLookup({
   value,
   onChange,
+  onSelect,
+  onGuestChange,
+
+  label = "Member / Donor",
+  placeholder = "Search by member ID, name, email, or phone...",
+  required = false,
+
   allowGuest = true,
-  allowCreate = true,
+  defaultPayerType = "member",
+  payerType,
+  onPayerTypeChange,
+
+  autoFocus = false,
+  disabled = false,
+  compact = false,
+
+  endpoint = "/finance/members",
+  minSearchLength = 2,
+  limit = 10,
 }) {
   const [query, setQuery] = useState("");
-  const [rows, setRows] = useState([]);
+  const [selected, setSelected] = useState(value || null);
+  const [type, setType] = useState(payerType || defaultPayerType);
+
   const [guest, setGuest] = useState({
     full_name: "",
     email: "",
     phone: "",
   });
-  const [mode, setMode] = useState("member");
+
+  const [rows, setRows] = useState([]);
+  const [open, setOpen] = useState(false);
+
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
-  /* =====================================================
-     SEARCH
-  ===================================================== */
+  const wrapperRef = useRef(null);
 
-  useEffect(() => {
-    const timer = setTimeout(() => {
-      if (mode === "member") {
-        searchMembers();
+  const selectedSnapshot = useMemo(
+    () => buildMemberSnapshot(selected),
+    [selected]
+  );
+
+  const effectiveType = payerType || type;
+
+  const setEffectiveType = (nextType) => {
+    setType(nextType);
+    onPayerTypeChange?.(nextType);
+
+    if (nextType === "guest") {
+      setSelected(null);
+      onChange?.(null);
+      onSelect?.(null);
+    }
+  };
+
+  const loadMembers = useCallback(
+    async (nextQuery) => {
+      const q = clean(nextQuery);
+
+      if (q.length < minSearchLength) {
+        setRows([]);
+        setOpen(false);
+        return;
       }
-    }, 350);
 
-    return () => clearTimeout(timer);
-  }, [query, mode]);
-
-  async function searchMembers() {
-    try {
       setLoading(true);
       setError("");
 
-      const { data } = await api.get("/finance/members", {
-        params: {
-          search: query,
-          limit: 10,
-        },
-      });
+      try {
+        const response = await api.get(endpoint, {
+          params: {
+            q,
+            search: q,
+            page: 1,
+            limit,
+            pageSize: limit,
+            active: "",
+            status: "",
+          },
+        });
 
-      setRows(Array.isArray(data?.rows) ? data.rows : []);
-    } catch (err) {
-      console.error(err);
-      setError("Unable to search members.");
-    } finally {
-      setLoading(false);
-    }
-  }
+        const nextRows = normalizeRows(response.data);
 
-  function selectMember(row) {
-    onChange?.({
-      type: "member",
-      member_id: row.id,
-      member: row,
-      guest: null,
-    });
-  }
+        setRows(nextRows);
+        setOpen(true);
+      } catch (err) {
+        setError(
+          err?.response?.data?.error ||
+            err?.response?.data?.message ||
+            err?.message ||
+            "Failed to search members."
+        );
+      } finally {
+        setLoading(false);
+      }
+    },
+    [endpoint, limit, minSearchLength]
+  );
 
-  function updateGuest(key, val) {
-    const next = {
-      ...guest,
-      [key]: val,
-    };
-
-    setGuest(next);
-
-    onChange?.({
-      type: "guest",
-      member_id: null,
-      member: null,
-      guest: next,
-    });
-  }
-
-  const selectedLabel = useMemo(() => {
-    if (value?.type === "guest") {
-      return value?.guest?.full_name || "Guest donor";
-    }
-
-    if (value?.member) {
-      return `${displayName(value.member)} • ${memberNo(value.member)}`;
-    }
-
-    return "No payer selected";
+  useEffect(() => {
+    setSelected(value || null);
   }, [value]);
 
-  /* =====================================================
-     UI
-  ===================================================== */
+  useEffect(() => {
+    if (payerType) {
+      setType(payerType);
+    }
+  }, [payerType]);
+
+  useEffect(() => {
+    const timer = window.setTimeout(() => {
+      if (effectiveType === "member") {
+        loadMembers(query);
+      }
+    }, 250);
+
+    return () => window.clearTimeout(timer);
+  }, [query, effectiveType, loadMembers]);
+
+  useEffect(() => {
+    function handleClick(event) {
+      if (!wrapperRef.current) return;
+
+      if (!wrapperRef.current.contains(event.target)) {
+        setOpen(false);
+      }
+    }
+
+    document.addEventListener("mousedown", handleClick);
+
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
+  function chooseMember(member) {
+    setSelected(member);
+    setQuery("");
+    setOpen(false);
+
+    onChange?.(member);
+    onSelect?.(buildMemberSnapshot(member), member);
+  }
+
+  function clearSelected() {
+    setSelected(null);
+    setQuery("");
+    setRows([]);
+    setOpen(false);
+
+    onChange?.(null);
+    onSelect?.(null);
+  }
+
+  function updateGuest(key, nextValue) {
+    const nextGuest = {
+      ...guest,
+      [key]: nextValue,
+    };
+
+    setGuest(nextGuest);
+
+    onGuestChange?.({
+      payer_type: "guest",
+      donor_type: "guest",
+      full_name: clean(nextGuest.full_name),
+      payer_name: clean(nextGuest.full_name),
+      donor_name: clean(nextGuest.full_name),
+      email: clean(nextGuest.email),
+      payer_email: clean(nextGuest.email),
+      donor_email: clean(nextGuest.email),
+      phone: clean(nextGuest.phone),
+    });
+  }
 
   return (
-    <div className="finance-member-lookup">
+    <div
+      ref={wrapperRef}
+      className={`finance-member-lookup ${compact ? "compact" : ""}`}
+    >
       <div className="finance-lookup-head">
-        <div>
-          <h3>Payer / Member</h3>
-          <p>
-            Search existing members or record a walk-in guest donor/program payer.
-          </p>
-        </div>
-
-        <span className="finance-lookup-selected">
-          {selectedLabel}
-        </span>
-      </div>
-
-      <div className="finance-lookup-tabs">
-        <button
-          type="button"
-          className={mode === "member" ? "active" : ""}
-          onClick={() => setMode("member")}
-        >
-          Existing Member
-        </button>
+        <label>
+          {label}
+          {required ? <span> *</span> : null}
+        </label>
 
         {allowGuest ? (
-          <button
-            type="button"
-            className={mode === "guest" ? "active" : ""}
-            onClick={() => setMode("guest")}
-          >
-            Guest / Walk-in
-          </button>
+          <div className="finance-segmented-control">
+            <button
+              type="button"
+              className={effectiveType === "member" ? "active" : ""}
+              onClick={() => setEffectiveType("member")}
+              disabled={disabled}
+            >
+              <UserRound size={14} />
+              Member
+            </button>
+
+            <button
+              type="button"
+              className={effectiveType === "guest" ? "active" : ""}
+              onClick={() => setEffectiveType("guest")}
+              disabled={disabled}
+            >
+              <User size={14} />
+              Non-Member
+            </button>
+          </div>
         ) : null}
       </div>
 
-      {mode === "member" ? (
+      {effectiveType === "member" ? (
         <>
-          <div className="finance-field">
-            <label>Search Member</label>
-            <input
-              value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              placeholder="Search by name, email, phone, or member number"
-            />
-          </div>
+          {selectedSnapshot ? (
+            <div className="finance-selected-member">
+              <div className="finance-selected-member-icon">
+                <Users size={18} />
+              </div>
+
+              <div>
+                <strong>{selectedSnapshot.full_name}</strong>
+                <span>
+                  {selectedSnapshot.member_no}
+                  {selectedSnapshot.email ? ` - ${selectedSnapshot.email}` : ""}
+                </span>
+                <small>
+                  {selectedSnapshot.phone || "--"}
+                  {selectedSnapshot.status ? " - " : ""}
+                  <StatusBadge value={selectedSnapshot.status} />
+                </small>
+              </div>
+
+              <button
+                type="button"
+                className="finance-icon-button"
+                onClick={clearSelected}
+                disabled={disabled}
+                aria-label="Clear selected member"
+              >
+                <X size={16} />
+              </button>
+            </div>
+          ) : (
+            <div className="finance-lookup-search">
+              <Search size={16} />
+
+              <input
+                value={query}
+                onChange={(event) => setQuery(event.target.value)}
+                placeholder={placeholder}
+                autoFocus={autoFocus}
+                disabled={disabled}
+                required={required}
+                onFocus={() => {
+                  if (rows.length) setOpen(true);
+                }}
+              />
+
+              {loading ? <span className="finance-lookup-spinner">Searching</span> : null}
+            </div>
+          )}
 
           {error ? (
-            <div className="finance-alert error">{error}</div>
+            <div className="finance-lookup-alert">
+              <AlertTriangle size={14} />
+              {error}
+            </div>
           ) : null}
 
-          <div className="finance-lookup-results">
-            {loading ? (
-              <div className="finance-lookup-empty">
-                Searching members...
-              </div>
-            ) : null}
+          {open && !selectedSnapshot ? (
+            <div className="finance-lookup-results">
+              {!loading && !rows.length ? (
+                <div className="finance-lookup-empty">
+                  No members found.
+                </div>
+              ) : null}
 
-            {!loading && !rows.length ? (
-              <div className="finance-lookup-empty">
-                No members found.
-              </div>
-            ) : null}
-
-            {!loading &&
-              rows.map((row) => (
+              {rows.map((member) => (
                 <button
-                  key={row.id}
+                  key={memberId(member) || memberNo(member)}
                   type="button"
-                  className={`finance-lookup-row ${
-                    Number(value?.member_id) === Number(row.id)
-                      ? "selected"
-                      : ""
-                  }`}
-                  onClick={() => selectMember(row)}
+                  className="finance-lookup-option"
+                  onClick={() => chooseMember(member)}
                 >
-                  <div>
-                    <strong>{displayName(row)}</strong>
-                    <span>
-                      {memberNo(row)} • {row.email || "--"} • {row.phone || "--"}
-                    </span>
+                  <div className="finance-lookup-option-icon">
+                    <UserRound size={16} />
                   </div>
 
-                  <em>{row.membership_status || "member"}</em>
+                  <div>
+                    <strong>{fullName(member)}</strong>
+                    <span>
+                      {memberNo(member)}
+                      {email(member) ? ` - ${email(member)}` : ""}
+                    </span>
+                    <small>
+                      {phone(member) || "--"}
+                      {status(member) ? " - " : ""}
+                      <StatusBadge value={status(member)} />
+                    </small>
+                  </div>
+
+                  <CheckCircle2 size={16} />
                 </button>
               ))}
-          </div>
-
-          {allowCreate ? (
-            <div className="finance-lookup-create-note">
-              Need a new member? Use Finance → Members → Register New Member,
-              then return here to record the first payment.
             </div>
           ) : null}
         </>
-      ) : null}
+      ) : (
+        <div className="finance-form-grid three">
+          <label>
+            Non-Member Name {required ? "*" : ""}
+            <input
+              value={guest.full_name}
+              onChange={(event) => updateGuest("full_name", event.target.value)}
+              placeholder="Donor or payer full name"
+              disabled={disabled}
+              required={required}
+            />
+          </label>
 
-      {mode === "guest" ? (
-        <div className="finance-guest-box">
-          <div className="finance-grid-2">
-            <div className="finance-field">
-              <label>Guest / Donor Name</label>
-              <input
-                value={guest.full_name}
-                onChange={(e) => updateGuest("full_name", e.target.value)}
-                placeholder="Full name"
-              />
-            </div>
+          <label>
+            Email
+            <input
+              type="email"
+              value={guest.email}
+              onChange={(event) => updateGuest("email", event.target.value)}
+              placeholder="guest@email.com"
+              disabled={disabled}
+            />
+          </label>
 
-            <div className="finance-field">
-              <label>Email</label>
-              <input
-                value={guest.email}
-                onChange={(e) => updateGuest("email", e.target.value)}
-                placeholder="Email for receipt"
-              />
-            </div>
-          </div>
-
-          <div className="finance-field">
-            <label>Phone</label>
+          <label>
+            Phone
             <input
               value={guest.phone}
-              onChange={(e) => updateGuest("phone", e.target.value)}
-              placeholder="Optional phone number"
+              onChange={(event) => updateGuest("phone", event.target.value)}
+              placeholder="(615) 000-0000"
+              disabled={disabled}
             />
-          </div>
+          </label>
         </div>
-      ) : null}
+      )}
     </div>
   );
 }

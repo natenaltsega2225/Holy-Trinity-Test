@@ -1,701 +1,1082 @@
-
 // frontend/src/components/FinanceDashboard/pages/DuesPlans.jsx
-import React, { useEffect, useMemo, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useState } from "react";
+import {
+  AlertTriangle,
+  CheckCircle2,
+  Edit3,
+  Eye,
+  EyeOff,
+  Plus,
+  RefreshCcw,
+  Save,
+  Search,
+  ShieldCheck,
+  Star,
+  X,
+} from "lucide-react";
+
 import api from "../../api";
 import "../../../styles/finance-enterprise.css";
+import FinanceActionMenu from "../components/FinanceActionMenu"
+const BILLING_CYCLES = [
+  { value: "monthly", label: "Monthly", months: 1 },
+  { value: "3_month", label: "3 Month", months: 3 },
+  { value: "6_month", label: "6 Month", months: 6 },
+  { value: "12_month", label: "12 Month", months: 12 },
+  { value: "one_time", label: "One Time", months: 1 },
+];
 
-const EMPTY_FORM = {
-  id: null,
-  code: "",
-  name: "",
-  description: "",
-  billing_cycle: "monthly",
-  duration_months: 1,
-  minimum_amount: "",
-  preset_amounts_text: "",
-  registration_fee: "50",
-  member_type: "both",
-  is_active: true,
-  sort_order: 1,
-  allow_custom_amount: false,
-};
+const STATUS_OPTIONS = [
+  { value: "", label: "All Status" },
+  { value: "active", label: "Active" },
+  { value: "inactive", label: "Inactive" },
+];
 
-function money(value) {
-  const n = Number(value || 0);
-  return `$${n.toLocaleString(undefined, {
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  })}`;
+function numberValue(value) {
+  const n = Number(value);
+  return Number.isFinite(n) ? n : 0;
 }
 
-function normalizeOption(value) {
-  const v = String(value || "monthly").toLowerCase();
-  if (["monthly", "3_month", "6_month", "12_month"].includes(v)) return v;
+function money(value) {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency: "USD",
+  }).format(numberValue(value));
+}
+
+function clean(value) {
+  return String(value ?? "").trim();
+}
+
+function firstValue(source = {}, keys = [], fallback = "") {
+  for (const key of keys) {
+    const value = source?.[key];
+    if (value !== undefined && value !== null && String(value).trim() !== "") {
+      return value;
+    }
+  }
+  return fallback;
+}
+
+function pretty(value) {
+  return String(value || "--")
+    .replaceAll("_", " ")
+    .replace(/\b\w/g, (char) => char.toUpperCase());
+}
+
+function normalizeRows(data) {
+  if (Array.isArray(data)) return data;
+  if (Array.isArray(data?.rows)) return data.rows;
+  if (Array.isArray(data?.plans)) return data.plans;
+  if (Array.isArray(data?.data)) return data.data;
+  if (Array.isArray(data?.data?.rows)) return data.data.rows;
+  if (Array.isArray(data?.data?.plans)) return data.data.plans;
+  return [];
+}
+
+function planId(row = {}) {
+  return firstValue(row, ["id", "plan_id", "dues_plan_id"], "");
+}
+function planCode(row = {}) {
+  return firstValue(
+    row,
+    ["plan_code", "code"],
+    ""
+  );
+}
+function planName(row = {}) {
+  return firstValue(row, ["plan_name", "name", "title"], "Membership Plan");
+}
+
+function planDescription(row = {}) {
+  return firstValue(row, ["description", "notes"], "");
+}
+
+function planAmount(row = {}) {
+  return numberValue(
+    firstValue(
+      row,
+      [
+        "minimum_amount",
+        "amount",
+        "price",
+        "monthly_amount",
+        "current_amount",
+        "membership_amount",
+        "dues_amount",
+      ],
+      0
+    )
+  );
+}
+
+function registrationFee(row = {}) {
+  return numberValue(
+    firstValue(row, ["registration_fee", "new_member_fee", "signup_fee"], 0)
+  );
+}
+
+function durationMonths(row = {}) {
+  const value = Number(
+    firstValue(row, ["duration_months", "months", "coverage_months"], 0)
+  );
+
+  if (value > 0) return value;
+
+  const cycle = String(firstValue(row, ["billing_cycle", "cycle"], "")).toLowerCase();
+  const found = BILLING_CYCLES.find((item) => item.value === cycle);
+  return found?.months || 1;
+}
+
+function billingCycle(row = {}) {
+  const raw = String(firstValue(row, ["billing_cycle", "cycle"], "")).toLowerCase();
+
+  if (raw) return raw;
+
+  const months = durationMonths(row);
+  if (months === 3) return "3_month";
+  if (months === 6) return "6_month";
+  if (months === 12) return "12_month";
   return "monthly";
 }
 
-function durationFromOption(option) {
-  const v = normalizeOption(option);
-  if (v === "3_month") return 3;
-  if (v === "6_month") return 6;
-  if (v === "12_month") return 12;
-  return 1;
-}
+function isActive(row = {}) {
+  const status = String(firstValue(row, ["status"], "")).toLowerCase();
 
-function labelFromOption(option) {
-  const v = normalizeOption(option);
-  if (v === "3_month") return "3-Month";
-  if (v === "6_month") return "6-Month";
-  if (v === "12_month") return "Yearly";
-  return "Monthly";
-}
-
-function defaultCodeFromOption(option) {
-  const v = normalizeOption(option);
-  if (v === "3_month") return "MEM-3";
-  if (v === "6_month") return "MEM-6";
-  if (v === "12_month") return "MEM-12";
-  return "MEM-1";
-}
-
-function parsePresetAmounts(value) {
-  const raw = String(value || "").trim();
-  if (!raw) return [];
-
-  return Array.from(
-    new Set(
-      raw
-        .split(",")
-        .map((item) => Number(String(item).trim()))
-        .filter((n) => Number.isFinite(n) && n > 0)
-        .map((n) => Number(n.toFixed(2)))
-    )
-  ).sort((a, b) => a - b);
-}
-
-function presetTextFromRow(row) {
-  const source = row?.preset_amounts ?? row?.preset_amounts_json ?? [];
-
-  try {
-    const parsed = Array.isArray(source)
-      ? source
-      : typeof source === "string"
-      ? JSON.parse(source)
-      : [];
-
-    return parsed.join(", ");
-  } catch {
-    return "";
+  if (status) {
+    return status === "active";
   }
+
+  return Number(firstValue(row, ["is_active", "active"], 1)) === 1;
 }
 
-function PlanModal({ open, title, subtitle, children, onClose }) {
+function isDefault(row = {}) {
+  return Number(firstValue(row, ["is_default", "default_plan"], 0)) === 1;
+}
+
+function cycleLabel(value) {
+  const found = BILLING_CYCLES.find((item) => item.value === value);
+  return found?.label || pretty(value);
+}
+
+function buildEmptyPlan() {
+  return {
+    plan_code: "",
+
+    plan_name: "",
+
+    description: "",
+
+    billing_cycle: "monthly",
+
+    duration_months: 1,
+
+    amount: "50.00",
+
+    registration_fee: "55.00",
+
+    grace_period_days: 0,
+
+    sort_order: 0,
+
+    is_active: 1,
+
+    is_default: 0,
+
+    allow_online_payment: 1,
+
+    allow_manual_payment: 1,
+  };
+}
+async function getFirst(endpoints) {
+  let lastError = null;
+
+  for (const endpoint of endpoints) {
+    try {
+      const res = await api.get(endpoint);
+      return res?.data || res || {};
+    } catch (err) {
+      lastError = err;
+      const status = Number(err?.response?.status || 0);
+      if (![404, 405].includes(status)) throw err;
+    }
+  }
+
+  throw lastError || new Error("Membership plans endpoint is not available.");
+}
+
+async function requestFirst(attempts, fallbackMessage) {
+  let lastError = null;
+
+  for (const attempt of attempts) {
+    try {
+      const method = String(attempt.method || "get").toLowerCase();
+      const payload = attempt.payload || {};
+      return await api[method](attempt.endpoint, payload);
+    } catch (err) {
+      lastError = err;
+      const status = Number(err?.response?.status || 0);
+      if (![404, 405].includes(status)) throw err;
+    }
+  }
+
+  throw lastError || new Error(fallbackMessage);
+}
+
+function buildPlanPayload(form = {}) {
+  const amount = numberValue(form.amount);
+  const regFee = numberValue(form.registration_fee);
+  const months = Math.max(1, Number(form.duration_months || 1));
+  const active = Number(form.is_active) === 1 ? 1 : 0;
+  const defaultPlan = Number(form.is_default) === 1 ? 1 : 0;
+
+return {
+  plan_code: form.plan_code,
+  code: form.plan_code,
+
+  plan_name: clean(form.plan_name),
+  name: clean(form.plan_name),
+  title: clean(form.plan_name),
+
+  minimum_amount: amount,
+  amount,
+  price: amount,
+
+  registration_fee: regFee,
+
+  billing_cycle: form.billing_cycle,
+
+  duration_months: months,
+
+  sort_order: Number(form.sort_order || 0),
+
+  is_active: active,
+
+  allow_custom_amount: 0,
+
+  description: clean(form.description),
+};
+}
+
+function PlanModal({ open, plan, onClose, onSave, saving }) {
+  const [form, setForm] = useState(buildEmptyPlan());
+
+  const editing = Boolean(planId(plan || {}));
+
+  useEffect(() => {
+    if (!open) return;
+
+    if (plan) {
+      setForm({
+        plan_code: planCode(plan),
+        plan_name: planName(plan),
+        description: planDescription(plan),
+        billing_cycle: billingCycle(plan),
+        duration_months: durationMonths(plan),
+        amount: String(planAmount(plan).toFixed(2)),
+        registration_fee: String(registrationFee(plan).toFixed(2)),
+        grace_period_days: numberValue(firstValue(plan, ["grace_period_days"], 0)),
+        sort_order: numberValue(firstValue(plan, ["sort_order", "display_order"], 0)),
+        is_active: isActive(plan) ? 1 : 0,
+        is_default: isDefault(plan) ? 1 : 0,
+        allow_online_payment: Number(firstValue(plan, ["allow_online_payment"], 1)),
+        allow_manual_payment: Number(firstValue(plan, ["allow_manual_payment"], 1)),
+      });
+    } else {
+      setForm(buildEmptyPlan());
+    }
+  }, [open, plan]);
+
   if (!open) return null;
 
-  return (
-    <div className="mr-plan-modal-overlay" onClick={onClose}>
-      <div className="mr-plan-modal" onClick={(e) => e.stopPropagation()}>
-        <div className="mr-plan-modal-head">
-          <div>
-            <h3 className="mr-plan-modal-title">{title}</h3>
-            {subtitle ? (
-              <p className="mr-plan-modal-subtitle">{subtitle}</p>
-            ) : null}
-          </div>
+  function update(key, value) {
+    setForm((current) => ({
+      ...current,
+      [key]: value,
+    }));
+  }
 
-          <button
-            type="button"
-            className="mr-plan-modal-close"
-            onClick={onClose}
-            aria-label="Close modal"
-          >
-            ×
-          </button>
-        </div>
+  function handleCycleChange(value) {
+    const found = BILLING_CYCLES.find((item) => item.value === value);
 
-        <div className="mr-plan-modal-body">{children}</div>
-      </div>
-    </div>
-  );
-}
+    setForm((current) => ({
+      ...current,
+      billing_cycle: value,
+      duration_months: found?.months || current.duration_months,
+    }));
+  }
 
-function ActionsMenu({ onEdit, onDelete, deleting }) {
-  const [open, setOpen] = useState(false);
+  function submit(event) {
+    event.preventDefault();
 
-  useEffect(() => {
-    if (!open) return undefined;
+    if (!clean(form.plan_name)) return;
+    if (numberValue(form.amount) <= 0) return;
 
-    function close() {
-      setOpen(false);
-    }
-
-    document.addEventListener("click", close);
-    return () => document.removeEventListener("click", close);
-  }, [open]);
+    onSave(buildPlanPayload(form));
+  }
 
   return (
-    <div className="mr-action-menu" onClick={(e) => e.stopPropagation()}>
-      <button
-        type="button"
-        className="mr-kebab-btn"
-        aria-label="Open actions"
-        onClick={() => setOpen((prev) => !prev)}
+    <div className="finance-modal-backdrop" role="presentation">
+      <div
+        className="finance-modal finance-dues-plan-modal"
+        role="dialog"
+        aria-modal="true"
+        aria-labelledby="dues-plan-modal-title"
       >
-        <span />
-        <span />
-        <span />
-      </button>
+        <form onSubmit={submit}>
+          <div className="finance-modal-header">
+            <div className="finance-modal-title-row">
+              <span className="finance-modal-icon">
+                <ShieldCheck size={20} />
+              </span>
 
-      {open ? (
-        <div className="mr-kebab-menu">
-          <button
-            type="button"
-            className="mr-kebab-item"
-            onClick={() => {
-              setOpen(false);
-              onEdit();
-            }}
-          >
-            Edit
-          </button>
-
-          <button
-            type="button"
-            className="mr-kebab-item danger"
-            onClick={() => {
-              setOpen(false);
-              onDelete();
-            }}
-            disabled={deleting}
-          >
-            {deleting ? "Deleting..." : "Delete"}
-          </button>
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function StatCard({ label, value, sub, accent = false }) {
-  return (
-    <article
-      className={`mr-plan-stat-card ${
-        accent ? "mr-plan-stat-card--accent" : ""
-      }`}
-    >
-      <span className="mr-plan-stat-label">{label}</span>
-      <strong className="mr-plan-stat-value">{value}</strong>
-      <p className="mr-plan-stat-sub">{sub}</p>
-    </article>
-  );
-}
-
-function statusMeta(row) {
-  return Number(row.is_active) === 1
-    ? {
-        label: "Active",
-        className: "mr-plan-status mr-plan-status-active",
-      }
-    : {
-        label: "Inactive",
-        className: "mr-plan-status mr-plan-status-inactive",
-      };
-}
-
-export default function DuesPlans() {
-  const [rows, setRows] = useState([]);
-  const [form, setForm] = useState(EMPTY_FORM);
-  const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
-  const [deletingId, setDeletingId] = useState(null);
-  const [error, setError] = useState("");
-  const [success, setSuccess] = useState("");
-  const [formOpen, setFormOpen] = useState(false);
-
-  async function loadPlans() {
-    try {
-      setLoading(true);
-      setError("");
-      const { data } = await api.get("/admin/membership-plans");
-      setRows(Array.isArray(data?.rows) ? data.rows : []);
-    } catch (err) {
-      setError(err?.response?.data?.error || "Failed to load membership plans.");
-    } finally {
-      setLoading(false);
-    }
-  }
-
-  useEffect(() => {
-    loadPlans();
-  }, []);
-
-  const sortedRows = useMemo(() => {
-    return [...rows].sort((a, b) => {
-      const aOrder = Number(a.sort_order ?? 0);
-      const bOrder = Number(b.sort_order ?? 0);
-      if (aOrder !== bOrder) return aOrder - bOrder;
-      return Number(a.duration_months ?? 0) - Number(b.duration_months ?? 0);
-    });
-  }, [rows]);
-
-  const stats = useMemo(() => {
-    const active = rows.filter((r) => Number(r.is_active) === 1).length;
-    const custom = rows.filter((r) => Number(r.allow_custom_amount) === 1).length;
-    const highestMinimum = rows.reduce(
-      (max, row) => Math.max(max, Number(row.minimum_amount || 0)),
-      0
-    );
-
-    return {
-      total: rows.length,
-      active,
-      custom,
-      highestMinimum,
-    };
-  }, [rows]);
-
-  function updateField(key, value) {
-    setForm((prev) => {
-      const next = { ...prev, [key]: value };
-
-      if (key === "billing_cycle") {
-        const option = normalizeOption(value);
-        next.billing_cycle = option;
-        next.duration_months = durationFromOption(option);
-
-        if (!next.code || next.code === defaultCodeFromOption(prev.billing_cycle)) {
-          next.code = defaultCodeFromOption(option);
-        }
-
-        if (!next.name || next.name.includes("Membership")) {
-          next.name = `${labelFromOption(option)} Membership`;
-        }
-      }
-
-      return next;
-    });
-  }
-
-  function startCreate(defaults = {}) {
-    const cycle = normalizeOption(defaults.billing_cycle || "monthly");
-
-    setError("");
-    setSuccess("");
-    setForm({
-      ...EMPTY_FORM,
-      ...defaults,
-      billing_cycle: cycle,
-      duration_months: durationFromOption(cycle),
-      code: defaults.code || defaultCodeFromOption(cycle),
-      name: defaults.name || `${labelFromOption(cycle)} Membership`,
-    });
-    setFormOpen(true);
-  }
-
-  function startEdit(plan) {
-    const cycle = normalizeOption(plan.billing_cycle || "monthly");
-
-    setError("");
-    setSuccess("");
-    setForm({
-      id: plan.id,
-      code: plan.code ?? plan.plan_code ?? "",
-      name: plan.name ?? plan.plan_name ?? "",
-      description: plan.description ?? "",
-      billing_cycle: cycle,
-      duration_months: Number(plan.duration_months ?? durationFromOption(cycle)),
-      minimum_amount: String(plan.minimum_amount ?? ""),
-      preset_amounts_text: presetTextFromRow(plan),
-      registration_fee: String(plan.registration_fee ?? "50"),
-      member_type: plan.member_type ?? "both",
-      is_active: Number(plan.is_active) === 1,
-      sort_order: Number(plan.sort_order ?? 1),
-      allow_custom_amount: Number(plan.allow_custom_amount) === 1,
-    });
-    setFormOpen(true);
-  }
-
-  function closeFormModal() {
-    if (saving) return;
-    setForm(EMPTY_FORM);
-    setFormOpen(false);
-  }
-
-  function validateForm() {
-    if (!String(form.code || "").trim()) return "Plan code is required.";
-    if (!String(form.name || "").trim()) return "Plan name is required.";
-
-    const minimum = Number(form.minimum_amount || 0);
-    if (!Number.isFinite(minimum) || minimum <= 0) {
-      return "Minimum amount must be greater than zero.";
-    }
-
-    const registrationFee = Number(form.registration_fee || 0);
-    if (!Number.isFinite(registrationFee) || registrationFee < 0) {
-      return "Registration fee cannot be negative.";
-    }
-
-    const presets = parsePresetAmounts(form.preset_amounts_text);
-    if (!presets.length) return "Enter at least one preset amount.";
-
-    if (presets.some((amount) => amount < minimum)) {
-      return "Preset amounts must be greater than or equal to the minimum.";
-    }
-
-    return "";
-  }
-
-  async function handleSubmit(e) {
-    e.preventDefault();
-
-    const validation = validateForm();
-    if (validation) {
-      setError(validation);
-      return;
-    }
-
-    const cycle = normalizeOption(form.billing_cycle);
-    const presets = parsePresetAmounts(form.preset_amounts_text);
-
-    const payload = {
-      code: String(form.code).trim(),
-      plan_code: String(form.code).trim(),
-      name: String(form.name).trim(),
-      plan_name: String(form.name).trim(),
-      description: String(form.description || "").trim(),
-      billing_cycle: cycle,
-      duration_months: durationFromOption(cycle),
-      minimum_amount: Number(form.minimum_amount || 0),
-      preset_amounts_json: presets,
-      registration_fee: Number(form.registration_fee || 0),
-      member_type: form.member_type,
-      is_active: form.is_active ? 1 : 0,
-      sort_order: Number(form.sort_order || 0),
-      allow_custom_amount: form.allow_custom_amount ? 1 : 0,
-    };
-
-    try {
-      setSaving(true);
-      setError("");
-      setSuccess("");
-
-      if (form.id) {
-        await api.put(`/admin/membership-plans/${form.id}`, payload);
-        setSuccess("Membership plan updated successfully.");
-      } else {
-        await api.post("/admin/membership-plans", payload);
-        setSuccess("Membership plan created successfully.");
-      }
-
-      await loadPlans();
-      closeFormModal();
-    } catch (err) {
-      setError(err?.response?.data?.error || "Failed to save membership plan.");
-    } finally {
-      setSaving(false);
-    }
-  }
-
-  async function handleDelete(id) {
-    if (!window.confirm("Delete this membership plan?")) return;
-
-    try {
-      setDeletingId(id);
-      setError("");
-      setSuccess("");
-      await api.delete(`/admin/membership-plans/${id}`);
-      setSuccess("Membership plan deleted successfully.");
-      await loadPlans();
-    } catch (err) {
-      setError(err?.response?.data?.error || "Failed to delete membership plan.");
-    } finally {
-      setDeletingId(null);
-    }
-  }
-
-  return (
-    <div className="mr-page">
-      <section className="mr-plan-hero-v2">
-        <div className="mr-plan-hero-v2__content">
-          <div className="mr-plan-hero-v2__eyebrow">Finance Configuration</div>
-          <h1 className="mr-plan-hero-v2__title">Membership Dues Plans</h1>
-          <p className="mr-plan-hero-v2__subtitle">
-            Finance controls the plans that render in the member dashboard.
-            Configure one active plan per billing interval.
-          </p>
-        </div>
-
-        <div className="mr-plan-hero-v2__actions">
-          <button
-            type="button"
-            className="mr-btn mr-btn-primary"
-            onClick={() => startCreate()}
-          >
-            + Create Plan
-          </button>
-        </div>
-      </section>
-
-      {error ? <div className="mr-banner mr-banner-error">{error}</div> : null}
-      {success ? (
-        <div className="mr-banner mr-plan-success-banner">{success}</div>
-      ) : null}
-
-      <section className="mr-plan-stats-grid">
-        <StatCard label="Total Plans" value={stats.total} sub="Configured rows" />
-        <StatCard label="Active Plans" value={stats.active} sub="Visible to members" />
-        <StatCard label="Custom Allowed" value={stats.custom} sub="Optional only" />
-        <StatCard
-          label="Highest Minimum"
-          value={money(stats.highestMinimum)}
-          sub="Largest configured minimum"
-          accent
-        />
-      </section>
-
-      <section className="mr-card mr-plan-table-panel">
-        <div className="mr-plan-panel-head mr-plan-panel-head--table">
-          <div>
-            <div className="mr-section-title">Configured Plans</div>
-            <div className="mr-section-subtitle">
-              These rows power member checkout, auto-pay, receipts, and ledger
-              coverage.
+              <div>
+                <h2 id="dues-plan-modal-title">
+                  {editing ? "Edit Membership Plan" : "Create Membership Plan"}
+                </h2>
+                <p>
+                  Configure dues used by finance registration, member renewals,
+                  Stripe checkout, cash, check, and Zelle workflows.
+                </p>
+              </div>
             </div>
-          </div>
 
-          <button
-            type="button"
-            className="mr-btn mr-btn-secondary"
-            onClick={() => startCreate()}
-          >
-            Add Plan
-          </button>
-        </div>
-
-        {loading ? (
-          <div className="mr-plan-empty-state">Loading membership plans...</div>
-        ) : sortedRows.length === 0 ? (
-          <div className="mr-plan-empty-state">No membership plans found.</div>
-        ) : (
-          <div className="mr-table-wrap">
-            <div className="mr-table-scroll">
-              <table className="mr-table mr-sticky">
-                <thead>
-                  <tr>
-                    <th>Code</th>
-                    <th>Plan</th>
-                    <th>Cycle</th>
-                    <th>Duration</th>
-                    <th>Minimum</th>
-                    <th>Presets</th>
-                    <th>Registration Fee</th>
-                    <th>Custom</th>
-                    <th>Status</th>
-                    <th style={{ textAlign: "right" }}>Actions</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {sortedRows.map((row) => {
-                    const status = statusMeta(row);
-
-                    return (
-                      <tr key={row.id}>
-                        <td>
-                          <span className="mr-plan-code-pill">
-                            {row.plan_code || row.code || "--"}
-                          </span>
-                        </td>
-                        <td>
-                          <div className="mr-plan-name-cell">
-                            <strong>{row.plan_name || row.name || "--"}</strong>
-                            <span>{row.description || "Membership billing plan"}</span>
-                          </div>
-                        </td>
-                        <td>{labelFromOption(row.billing_cycle)}</td>
-                        <td>{Number(row.duration_months || 1)} month(s)</td>
-                        <td>{money(row.minimum_amount)}</td>
-                        <td>{presetTextFromRow(row) || "--"}</td>
-                        <td>{money(row.registration_fee)}</td>
-                        <td>{Number(row.allow_custom_amount) === 1 ? "Yes" : "No"}</td>
-                        <td>
-                          <span className={status.className}>{status.label}</span>
-                        </td>
-                        <td style={{ textAlign: "right" }}>
-                          <ActionsMenu
-                            onEdit={() => startEdit(row)}
-                            onDelete={() => handleDelete(row.id)}
-                            deleting={deletingId === row.id}
-                          />
-                        </td>
-                      </tr>
-                    );
-                  })}
-                </tbody>
-              </table>
-            </div>
-          </div>
-        )}
-      </section>
-
-      <PlanModal
-        open={formOpen}
-        title={form.id ? "Edit Membership Plan" : "Create Membership Plan"}
-        subtitle="Create finance-controlled dues options that members can select in the dashboard."
-        onClose={closeFormModal}
-      >
-        <form className="mr-plan-form" onSubmit={handleSubmit}>
-          <div className="mr-plan-form-grid">
-            <label className="mr-field">
-              <span className="mr-label">Billing Cycle</span>
-              <select
-                className="mr-input mr-input-plain"
-                value={form.billing_cycle}
-                onChange={(e) => updateField("billing_cycle", e.target.value)}
-              >
-                <option value="monthly">Monthly</option>
-                <option value="3_month">3-Month</option>
-                <option value="6_month">6-Month</option>
-                <option value="12_month">12-Month</option>
-              </select>
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Duration Months</span>
-              <input
-                className="mr-input mr-input-plain"
-                value={durationFromOption(form.billing_cycle)}
-                readOnly
-              />
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Code</span>
-              <input
-                className="mr-input mr-input-plain"
-                value={form.code}
-                onChange={(e) => updateField("code", e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Name</span>
-              <input
-                className="mr-input mr-input-plain"
-                value={form.name}
-                onChange={(e) => updateField("name", e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Minimum Amount</span>
-              <input
-                className="mr-input mr-input-plain"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.minimum_amount}
-                onChange={(e) => updateField("minimum_amount", e.target.value)}
-                required
-              />
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Registration Fee</span>
-              <input
-                className="mr-input mr-input-plain"
-                type="number"
-                min="0"
-                step="0.01"
-                value={form.registration_fee}
-                onChange={(e) => updateField("registration_fee", e.target.value)}
-              />
-            </label>
-
-            <label className="mr-field mr-field-span-2">
-              <span className="mr-label">Preset Amounts</span>
-              <input
-                className="mr-input mr-input-plain"
-                value={form.preset_amounts_text}
-                onChange={(e) =>
-                  updateField("preset_amounts_text", e.target.value)
-                }
-                placeholder="50, 100, 150"
-                required
-              />
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Member Type</span>
-              <select
-                className="mr-input mr-input-plain"
-                value={form.member_type}
-                onChange={(e) => updateField("member_type", e.target.value)}
-              >
-                <option value="both">Both</option>
-                <option value="individual">Individual</option>
-                <option value="family">Family</option>
-              </select>
-            </label>
-
-            <label className="mr-field">
-              <span className="mr-label">Sort Order</span>
-              <input
-                className="mr-input mr-input-plain"
-                type="number"
-                value={form.sort_order}
-                onChange={(e) => updateField("sort_order", e.target.value)}
-              />
-            </label>
-
-            <label className="mr-field mr-field-span-2">
-              <span className="mr-label">Description</span>
-              <textarea
-                className="mr-input mr-input-plain"
-                rows={3}
-                value={form.description}
-                onChange={(e) => updateField("description", e.target.value)}
-              />
-            </label>
-
-            <label className="mr-check-row">
-              <input
-                type="checkbox"
-                checked={Boolean(form.is_active)}
-                onChange={(e) => updateField("is_active", e.target.checked)}
-              />
-              <span>Active and visible to members</span>
-            </label>
-
-            <label className="mr-check-row">
-              <input
-                type="checkbox"
-                checked={Boolean(form.allow_custom_amount)}
-                onChange={(e) =>
-                  updateField("allow_custom_amount", e.target.checked)
-                }
-              />
-              <span>Allow custom amount above minimum</span>
-            </label>
-          </div>
-
-          <div className="mr-plan-modal-actions">
             <button
               type="button"
-              className="mr-btn mr-btn-secondary"
-              onClick={closeFormModal}
+              className="finance-icon-button"
+              onClick={onClose}
+              aria-label="Close membership plan modal"
+            >
+              <X size={18} />
+            </button>
+          </div>
+
+          <div className="finance-modal-body">
+            <div className="finance-form-grid">
+              <label className="finance-field finance-field-full">
+                <span>Plan Name *</span>
+                <input
+                  value={form.plan_name}
+                  onChange={(event) => update("plan_name", event.target.value)}
+                  placeholder="Example: 3-Month Membership"
+                  required
+                />
+              </label>
+
+              <label className="finance-field">
+                <span>Billing Cycle *</span>
+                <select
+                  value={form.billing_cycle}
+                  onChange={(event) => handleCycleChange(event.target.value)}
+                  required
+                >
+                  {BILLING_CYCLES.map((option) => (
+                    <option key={option.value} value={option.value}>
+                      {option.label}
+                    </option>
+                  ))}
+                </select>
+              </label>
+
+              <label className="finance-field">
+                <span>Coverage Months *</span>
+                <input
+                  type="number"
+                  min="1"
+                  max="12"
+                  value={form.duration_months}
+                  onChange={(event) => update("duration_months", event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className="finance-field">
+                <span>Plan Amount *</span>
+                <input
+                  type="number"
+                  min="0.01"
+                  step="0.01"
+                  value={form.amount}
+                  onChange={(event) => update("amount", event.target.value)}
+                  required
+                />
+              </label>
+
+              <label className="finance-field">
+                <span>Registration Fee</span>
+                <input
+                  type="number"
+                  min="0"
+                  step="0.01"
+                  value={form.registration_fee}
+                  onChange={(event) => update("registration_fee", event.target.value)}
+                />
+              </label>
+
+              <label className="finance-field">
+                <span>Grace Period Days</span>
+                <input
+                  type="number"
+                  min="0"
+                  value={form.grace_period_days}
+                  onChange={(event) => update("grace_period_days", event.target.value)}
+                />
+              </label>
+
+              <label className="finance-field">
+                <span>Sort Order</span>
+                <input
+                  type="number"
+                  value={form.sort_order}
+                  onChange={(event) => update("sort_order", event.target.value)}
+                />
+              </label>
+
+              <label className="finance-field finance-field-full">
+                <span>Description</span>
+                <textarea
+                  rows={3}
+                  value={form.description}
+                  onChange={(event) => update("description", event.target.value)}
+                  placeholder="Optional description shown to finance/admin users."
+                />
+              </label>
+            </div>
+
+            <div className="finance-checkbox-grid">
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Number(form.is_active) === 1}
+                  onChange={(event) =>
+                    update("is_active", event.target.checked ? 1 : 0)
+                  }
+                />
+                <span>Active plan</span>
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Number(form.is_default) === 1}
+                  onChange={(event) =>
+                    update("is_default", event.target.checked ? 1 : 0)
+                  }
+                />
+                <span>Default plan</span>
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Number(form.allow_online_payment) === 1}
+                  onChange={(event) =>
+                    update("allow_online_payment", event.target.checked ? 1 : 0)
+                  }
+                />
+                <span>Allow card / ACH checkout</span>
+              </label>
+
+              <label>
+                <input
+                  type="checkbox"
+                  checked={Number(form.allow_manual_payment) === 1}
+                  onChange={(event) =>
+                    update("allow_manual_payment", event.target.checked ? 1 : 0)
+                  }
+                />
+                <span>Allow cash / check / Zelle</span>
+              </label>
+            </div>
+          </div>
+
+          <div className="finance-modal-footer">
+            <button
+              type="button"
+              className="finance-btn finance-btn-light"
+              onClick={onClose}
               disabled={saving}
             >
               Cancel
             </button>
 
-            <button type="submit" className="mr-btn mr-btn-primary" disabled={saving}>
-              {saving ? "Saving..." : form.id ? "Update Plan" : "Create Plan"}
+            <button
+              type="submit"
+              className="finance-btn finance-btn-primary"
+              disabled={saving || !clean(form.plan_name) || numberValue(form.amount) <= 0}
+            >
+              {saving ? (
+                <>
+                  <RefreshCcw size={16} className="finance-spin" />
+                  Saving...
+                </>
+              ) : (
+                <>
+                  <Save size={16} />
+                  Save Plan
+                </>
+              )}
             </button>
           </div>
         </form>
-      </PlanModal>
+      </div>
+    </div>
+  );
+}
+
+export default function DuesPlans() {
+  const [rows, setRows] = useState([]);
+  const [search, setSearch] = useState("");
+  const [statusFilter, setStatusFilter] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState(null);
+  const [modalOpen, setModalOpen] = useState(false);
+
+  const [loading, setLoading] = useState(false);
+  const [actionLoading, setActionLoading] = useState("");
+  const [error, setError] = useState("");
+  const [successText, setSuccessText] = useState("");
+
+  const loadPlans = useCallback(async () => {
+    setLoading(true);
+    setError("");
+
+    try {
+      const data = await getFirst([
+        "/admin/membership-plans",
+        "/dues/plans",
+        "/subscription/plans",
+      ]);
+
+      setRows(normalizeRows(data));
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to load membership plans."
+      );
+    } finally {
+      setLoading(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    loadPlans();
+  }, [loadPlans]);
+
+  const filteredRows = useMemo(() => {
+    const q = clean(search).toLowerCase();
+
+    return rows.filter((row) => {
+      const text = [
+        planName(row),
+        planDescription(row),
+        billingCycle(row),
+        durationMonths(row),
+        planAmount(row),
+        registrationFee(row),
+      ]
+        .join(" ")
+        .toLowerCase();
+
+      const matchesSearch = !q || text.includes(q);
+      const matchesStatus =
+        !statusFilter ||
+        (statusFilter === "active" && isActive(row)) ||
+        (statusFilter === "inactive" && !isActive(row));
+
+      return matchesSearch && matchesStatus;
+    });
+  }, [rows, search, statusFilter]);
+
+  const summary = useMemo(() => {
+    const active = rows.filter(isActive).length;
+    const inactive = rows.length - active;
+    const defaultPlan = rows.find(isDefault);
+
+    return {
+      total: rows.length,
+      active,
+      inactive,
+      defaultName: defaultPlan ? planName(defaultPlan) : "--",
+    };
+  }, [rows]);
+
+  function openCreate() {
+    setSelectedPlan(null);
+    setModalOpen(true);
+    setError("");
+    setSuccessText("");
+  }
+
+  function openEdit(row) {
+    setSelectedPlan(row);
+    setModalOpen(true);
+    setError("");
+    setSuccessText("");
+  }
+
+  async function savePlan(payload) {
+    setActionLoading("save");
+    setError("");
+    setSuccessText("");
+
+    try {
+      const id = planId(selectedPlan || {});
+
+      if (id) {
+        await requestFirst(
+          [
+            { method: "patch", endpoint: `/admin/membership-plans/${id}`, payload },
+            { method: "put", endpoint: `/admin/membership-plans/${id}`, payload },
+            { method: "patch", endpoint: `/finance/dues-plans/${id}`, payload },
+            { method: "put", endpoint: `/finance/dues-plans/${id}`, payload },
+          ],
+          "Update plan endpoint is not available."
+        );
+
+       setSuccessText(
+  payload.billing_cycle === "monthly"
+    ? "Monthly plan updated. 3, 6 and 12 month plans recalculated."
+    : "Membership plan updated."
+);
+      } else {
+        await requestFirst(
+          [
+            { method: "post", endpoint: "/admin/membership-plans", payload },
+            { method: "post", endpoint: "/finance/dues-plans", payload },
+          ],
+          "Create plan endpoint is not available."
+        );
+
+        setSuccessText("Membership plan created.");
+      }
+
+      setModalOpen(false);
+      setSelectedPlan(null);
+      await loadPlans();
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to save membership plan."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+
+
+  async function togglePlan(row) {
+    const id = planId(row);
+    if (!id) return;
+
+    const nextActive = !isActive(row);
+
+    setActionLoading(`toggle-${id}`);
+    setError("");
+    setSuccessText("");
+
+    const payload = {
+   ...buildPlanPayload({
+  plan_code: planCode(row),
+
+  plan_name: planName(row),
+
+  description: planDescription(row),
+
+  billing_cycle: billingCycle(row),
+
+  duration_months: durationMonths(row),
+
+  amount: planAmount(row),
+
+  registration_fee: registrationFee(row),
+
+  grace_period_days: firstValue(
+    row,
+    ["grace_period_days"],
+    0
+  ),
+
+  sort_order: firstValue(
+    row,
+    ["sort_order", "display_order"],
+    0
+  ),
+
+  allow_online_payment: firstValue(
+    row,
+    ["allow_online_payment"],
+    1
+  ),
+
+  allow_manual_payment: firstValue(
+    row,
+    ["allow_manual_payment"],
+    1
+  ),
+
+  is_default: isDefault(row) ? 1 : 0,
+
+  is_active: nextActive ? 1 : 0,
+})
+    };
+
+    try {
+      await requestFirst(
+        [
+          { method: "patch", endpoint: `/admin/membership-plans/${id}/status`, payload },
+          { method: "put", endpoint: `/admin/membership-plans/${id}/status`, payload },
+          { method: "patch", endpoint: `/admin/membership-plans/${id}`, payload },
+          { method: "put", endpoint: `/admin/membership-plans/${id}`, payload },
+          { method: "patch", endpoint: `/finance/dues-plans/${id}/status`, payload },
+          { method: "put", endpoint: `/finance/dues-plans/${id}/status`, payload },
+          { method: "patch", endpoint: `/finance/dues-plans/${id}`, payload },
+          { method: "put", endpoint: `/finance/dues-plans/${id}`, payload },
+        ],
+        "Update plan status endpoint is not available."
+      );
+
+      setSuccessText(`Plan ${nextActive ? "activated" : "deactivated"}.`);
+      await loadPlans();
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to update plan status."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+  async function setDefaultPlan(row) {
+    const id = planId(row);
+    if (!id) return;
+
+    setActionLoading(`default-${id}`);
+    setError("");
+    setSuccessText("");
+
+    const payload = {
+  ...buildPlanPayload({
+  plan_code: planCode(row),
+
+  plan_name: planName(row),
+
+  description: planDescription(row),
+
+  billing_cycle: billingCycle(row),
+
+  duration_months: durationMonths(row),
+
+  amount: planAmount(row),
+
+  registration_fee: registrationFee(row),
+
+  grace_period_days: firstValue(
+    row,
+    ["grace_period_days"],
+    0
+  ),
+
+  sort_order: firstValue(
+    row,
+    ["sort_order", "display_order"],
+    0
+  ),
+
+  allow_online_payment: firstValue(
+    row,
+    ["allow_online_payment"],
+    1
+  ),
+
+  allow_manual_payment: firstValue(
+    row,
+    ["allow_manual_payment"],
+    1
+  ),
+
+  is_active: 1,
+
+  is_default: 1,
+})
+    };
+
+    try {
+      await requestFirst(
+        [
+          { method: "patch", endpoint: `/admin/membership-plans/${id}/default`, payload },
+          { method: "put", endpoint: `/admin/membership-plans/${id}/default`, payload },
+          { method: "patch", endpoint: `/admin/membership-plans/${id}`, payload },
+          { method: "put", endpoint: `/admin/membership-plans/${id}`, payload },
+          { method: "patch", endpoint: `/finance/dues-plans/${id}/default`, payload },
+          { method: "put", endpoint: `/finance/dues-plans/${id}/default`, payload },
+          { method: "patch", endpoint: `/finance/dues-plans/${id}`, payload },
+          { method: "put", endpoint: `/finance/dues-plans/${id}`, payload },
+        ],
+        "Default plan endpoint is not available."
+      );
+
+      setSuccessText("Default membership plan updated.");
+      await loadPlans();
+    } catch (err) {
+      setError(
+        err?.response?.data?.error ||
+          err?.response?.data?.message ||
+          err?.message ||
+          "Failed to set default plan."
+      );
+    } finally {
+      setActionLoading("");
+    }
+  }
+
+
+  return (
+    <div className="finance-page finance-dues-plans-page">
+      <div className="finance-page-header">
+        <div>
+          <p className="finance-eyebrow">Membership Configuration</p>
+          <h1>Dues Plans</h1>
+          <p className="finance-page-subtitle">
+            Configure enterprise membership dues for monthly, 3-month, 6-month,
+            12-month, registration, renewal, Stripe checkout, and manual payment workflows.
+          </p>
+        </div>
+
+        <div className="finance-page-actions">
+          <button
+            type="button"
+            className="finance-btn finance-btn-light"
+            onClick={loadPlans}
+            disabled={loading}
+          >
+            <RefreshCcw size={16} className={loading ? "finance-spin" : ""} />
+            Refresh
+          </button>
+
+          <button
+            type="button"
+            className="finance-btn finance-btn-primary"
+            onClick={openCreate}
+          >
+            <Plus size={16} />
+            Create Plan
+          </button>
+        </div>
+      </div>
+
+      {error ? (
+        <div className="finance-alert finance-alert-danger">
+          <AlertTriangle size={17} />
+          <span>{error}</span>
+        </div>
+      ) : null}
+
+      {successText ? (
+        <div className="finance-alert finance-alert-success">
+          <CheckCircle2 size={17} />
+          <span>{successText}</span>
+        </div>
+      ) : null}
+
+      <div className="finance-summary-grid">
+        <div className="finance-summary-card">
+          <span>Total Plans</span>
+          <strong>{summary.total}</strong>
+          <small>Configured dues plans</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Active</span>
+          <strong>{summary.active}</strong>
+          <small>Available to finance</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Inactive</span>
+          <strong>{summary.inactive}</strong>
+          <small>Hidden or retired</small>
+        </div>
+
+        <div className="finance-summary-card">
+          <span>Default Plan</span>
+          <strong>{summary.defaultName}</strong>
+          <small>Used when no plan is selected</small>
+        </div>
+      </div>
+
+      <div className="finance-table-shell">
+        <div className="finance-filter-bar">
+          <label className="finance-search-field">
+            <Search size={18} />
+            <input
+              value={search}
+              onChange={(event) => setSearch(event.target.value)}
+              placeholder="Search plan name, description, cycle, or amount..."
+            />
+          </label>
+
+          <select
+            value={statusFilter}
+            onChange={(event) => setStatusFilter(event.target.value)}
+          >
+            {STATUS_OPTIONS.map((option) => (
+              <option key={option.value || "all-status"} value={option.value}>
+                {option.label}
+              </option>
+            ))}
+          </select>
+        </div>
+
+        <div className="finance-table-scroll">
+          <table className="finance-table">
+            <thead>
+              <tr>
+                <th>Plan</th>
+                <th>Cycle</th>
+                <th>Coverage</th>
+                <th>Plan Amount</th>
+                <th>Registration Fee</th>
+                <th>Grace</th>
+                <th>Payment</th>
+                <th>Status</th>
+                <th>Default</th>
+                <th>Actions</th>
+              </tr>
+            </thead>
+
+            <tbody>
+              {loading ? (
+                <tr>
+                  <td colSpan={10}>
+                    <div className="finance-empty-row">
+                      <RefreshCcw size={18} className="finance-spin" />
+                      Loading membership plans...
+                    </div>
+                  </td>
+                </tr>
+              ) : null}
+
+              {!loading && !filteredRows.length ? (
+                <tr>
+                  <td colSpan={10}>
+                    <div className="finance-empty-row">No membership plans found.</div>
+                  </td>
+                </tr>
+              ) : null}
+
+              {!loading &&
+                filteredRows.map((row) => {
+                  const id = planId(row);
+                  const active = isActive(row);
+                  const defaultPlan = isDefault(row);
+
+                  return (
+  <tr key={id || planName(row)}>
+    <td>
+      <div className="finance-cell-title">
+        <strong>{planName(row)}</strong>
+        <small>{planDescription(row) || "Membership dues plan"}</small>
+      </div>
+    </td>
+
+    <td>{cycleLabel(billingCycle(row))}</td>
+    <td>{durationMonths(row)} month(s)</td>
+    <td>{money(planAmount(row))}</td>
+    <td>{money(registrationFee(row))}</td>
+    <td>{numberValue(firstValue(row, ["grace_period_days"], 0))} day(s)</td>
+
+    <td>
+      <div className="finance-cell-stack">
+        <span>
+          Online:{" "}
+          {Number(firstValue(row, ["allow_online_payment"], 1)) === 1
+            ? "Yes"
+            : "No"}
+        </span>
+        <small>
+          Manual:{" "}
+          {Number(firstValue(row, ["allow_manual_payment"], 1)) === 1
+            ? "Yes"
+            : "No"}
+        </small>
+      </div>
+    </td>
+
+    <td>
+      <span
+        className={`finance-badge ${
+          active ? "finance-badge-success" : "finance-badge-neutral"
+        }`}
+      >
+        {active ? "Active" : "Inactive"}
+      </span>
+    </td>
+
+    <td>
+      <span
+        className={`finance-badge ${
+          defaultPlan ? "finance-badge-primary" : "finance-badge-neutral"
+        }`}
+      >
+        {defaultPlan ? "Yes" : "No"}
+      </span>
+    </td>
+
+    <td className="finance-action-cell">
+      <FinanceActionMenu
+        row={row}
+        actions={[
+          {
+            key: "edit",
+            label: "Edit",
+            icon: Edit3,
+            onClick: () => openEdit(row),
+          },
+          {
+            key: active ? "deactivate" : "activate",
+            label: active ? "Deactivate" : "Activate",
+            icon: active ? EyeOff : Eye,
+            tone: active ? "danger" : undefined,
+            onClick: () => togglePlan(row),
+            disabled: actionLoading === `toggle-${id}`,
+          },
+          {
+            key: "default",
+            label: "Default",
+            icon: Star,
+            onClick: () => setDefaultPlan(row),
+            disabled: defaultPlan || actionLoading === `default-${id}`,
+          },
+        ]}
+      />
+    </td>
+  </tr>
+);
+                })}
+            </tbody>
+          </table>
+        </div>
+      </div>
+
+      <PlanModal
+        open={modalOpen}
+        plan={selectedPlan}
+        onClose={() => {
+          if (actionLoading) return;
+          setModalOpen(false);
+          setSelectedPlan(null);
+        }}
+        onSave={savePlan}
+        saving={actionLoading === "save"}
+      />
     </div>
   );
 }

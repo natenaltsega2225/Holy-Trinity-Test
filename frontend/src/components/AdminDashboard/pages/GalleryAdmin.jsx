@@ -1,8 +1,9 @@
 //frontend\src\components\AdminDashboard\GalleryAdmin.jsx
 import React, { useEffect, useMemo, useRef, useState } from "react";
 import api from "../../api";
-import "../../../styles/admin-media-manager.css";
-
+ import "../../../styles/admin-media-manager.css";
+// import "../../../styles/admin-enterprise.css";
+// import "../../../styles/admin-table.css";
 const emptyAlbum = {
   title: "",
   description: "",

@@ -1,578 +1,435 @@
-// backend/services/domains/invoices/invoiceService.js
+// backend/services/domains/invoices/invoiceItemService.js
 "use strict";
 
 const db = require("../../../db");
 
 const {
-  normalizePaymentCategory,
-  paymentCategoryLabel,
-  donationCategoryLabel,
-  paymentMethodLabel,
-} = require("../../shared/paymentHelpers");
-
-const {
-  buildCoveragePayload,
-  buildCoverageChips,
-  coverageDisplay,
-} = require("../../shared/coverageHelpers");
+  insertExistingColumns,
+} = require("../../../utils/dbHelpers");
 
 /* =========================================================
-   SAFE JSON
+   HELPERS
 ========================================================= */
+
+function clean(value, max = 500) {
+  return String(value ?? "").trim().slice(0, max);
+}
+
+function money(value) {
+  const n = Number(value || 0);
+  return Number.isFinite(n) ? Number(n.toFixed(2)) : 0;
+}
 
 function safeJson(value, fallback = null) {
   try {
-    if (!value) return fallback;
+    if (value === undefined || value === null || value === "") return fallback;
 
-    if (typeof value === "object") {
+    if (typeof value === "string") {
+      JSON.parse(value);
       return value;
     }
 
-    return JSON.parse(value);
+    return JSON.stringify(value);
   } catch {
     return fallback;
   }
 }
 
-/* =========================================================
-   MONEY
-========================================================= */
+function parseJson(value, fallback = []) {
+  try {
+    if (!value) return fallback;
+    if (Array.isArray(value)) return value;
 
-function money(value) {
-  return Number(value || 0);
+    const parsed = JSON.parse(value);
+    return Array.isArray(parsed) ? parsed : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+function amountFromItem(payload = {}) {
+  const quantity = Number(payload.quantity || 1) || 1;
+  const unitPrice = money(
+    payload.unit_price ||
+      payload.price ||
+      payload.amount ||
+      payload.total_amount ||
+      payload.total_price ||
+      0
+  );
+
+  const explicitTotal = payload.total_price ?? payload.total_amount ?? payload.amount;
+
+  return {
+    quantity,
+    unitPrice,
+    total: explicitTotal !== undefined ? money(explicitTotal) : money(quantity * unitPrice),
+  };
+}
+
+function itemMeta(payload = {}) {
+  return safeJson(
+    {
+      code: payload.code || payload.item_code || null,
+      category: payload.category || null,
+      sub_category: payload.sub_category || null,
+      coverage_label: payload.coverage_label || null,
+      coverage_months: payload.coverage_months || null,
+      coverage_months_json: payload.coverage_months_json || null,
+      donation_category: payload.donation_category || null,
+      program_name: payload.program_name || null,
+      registration_id: payload.registration_id || null,
+      pledge_id: payload.pledge_id || null,
+      campaign_id: payload.campaign_id || null,
+      payment_link: payload.payment_link || null,
+      invoice_link: payload.invoice_link || null,
+      reminder_type: payload.reminder_type || null,
+      ...payload.metadata,
+    },
+    null
+  );
+}
+
+function normalizeItem(payload = {}) {
+  const { quantity, unitPrice, total } = amountFromItem(payload);
+
+  return {
+    code: clean(payload.code || payload.item_code || "", 40) || null,
+    item_type: clean(payload.item_type || payload.type || "payment", 80),
+    item_name: clean(payload.item_name || payload.name || "Payment", 180),
+    description: clean(payload.description || payload.notes || "Finance item", 1000),
+    quantity,
+    unit_price: unitPrice,
+    total_price: total,
+    amount: total,
+    total_amount: total,
+    metadata_json: payload.metadata_json || itemMeta(payload),
+  };
 }
 
 /* =========================================================
-   LOAD INVOICE
+   CREATE ITEM
 ========================================================= */
 
-async function loadInvoiceById(id) {
+async function createInvoiceItem(conn, payload = {}) {
+  const item = normalizeItem(payload);
 
-  const [rows] =
-    await db.query(
-      `
-      SELECT *
-      FROM tbl_finance_invoices
-      WHERE id = ?
-      LIMIT 1
-      `,
-      [id]
-    );
+  const id = await insertExistingColumns(conn, "tbl_finance_invoice_items", {
+    invoice_id: payload.invoice_id,
 
-  return rows[0] || null;
+    code: item.code,
+    item_code: item.code,
+
+    item_type: item.item_type,
+    item_name: item.item_name,
+    description: item.description,
+
+    quantity: item.quantity,
+    unit_price: item.unit_price,
+    total_price: item.total_price,
+    amount: item.amount,
+    total_amount: item.total_amount,
+
+    metadata_json: item.metadata_json,
+
+    created_at: new Date(),
+    updated_at: new Date(),
+  });
+
+  return Number(id?.insertId || id || 0);
 }
 
 /* =========================================================
-   LOAD BY NUMBER
+   CREATE BULK ITEMS
 ========================================================= */
 
-async function loadInvoiceByNumber(
-  invoiceNumber
-) {
+async function createInvoiceItems(conn, invoiceId, items = []) {
+  const ids = [];
 
-  const [rows] =
-    await db.query(
-      `
-      SELECT *
-      FROM tbl_finance_invoices
-      WHERE invoice_number = ?
-      LIMIT 1
-      `,
-      [invoiceNumber]
-    );
-
-  return rows[0] || null;
-}
-
-/* =========================================================
-   LOAD PAYMENTS
-========================================================= */
-
-async function loadInvoicePayments(
-  invoiceId
-) {
-
-  const [rows] =
-    await db.query(
-      `
-      SELECT *
-
-      FROM tbl_finance_payments
-
-      WHERE invoice_id = ?
-
-      ORDER BY id ASC
-      `,
-      [invoiceId]
-    );
-
-  return rows;
-}
-
-/* =========================================================
-   LOAD RECEIPTS
-========================================================= */
-
-async function loadInvoiceReceipts(
-  invoiceId
-) {
-
-  const [rows] =
-    await db.query(
-      `
-      SELECT *
-
-      FROM tbl_finance_receipts
-
-      WHERE invoice_id = ?
-
-      ORDER BY id DESC
-      `,
-      [invoiceId]
-    );
-
-  return rows;
-}
-
-/* =========================================================
-   NORMALIZE PAYMENT
-========================================================= */
-
-function normalizeInvoicePayment(
-  row = {}
-) {
-
-  const category =
-    normalizePaymentCategory(
-      row.payment_type ||
-      row.category
-    );
-
-  const coverage =
-    buildCoveragePayload({
-      coverage_year:
-        row.coverage_year,
-
-      coverage_start_month:
-        row.coverage_start_month,
-
-      months_paid:
-        row.months_paid,
-
-      coverage_months_json:
-        row.coverage_months_json,
+  for (const item of items.filter(Boolean)) {
+    const id = await createInvoiceItem(conn, {
+      ...item,
+      invoice_id: invoiceId,
     });
 
-  return {
-
-    id:
-      row.id,
-
-    payment_number:
-      row.payment_number,
-
-    category,
-
-    category_label:
-      paymentCategoryLabel(
-        category
-      ),
-
-    sub_category:
-      row.sub_category,
-
-    amount:
-      money(row.amount),
-
-    payment_method:
-      row.payment_method,
-
-    payment_method_label:
-      paymentMethodLabel(
-        row.payment_method
-      ),
-
-    payment_provider:
-      row.payment_provider,
-
-    payment_status:
-      row.payment_status,
-
-    reference_no:
-      row.reference_no,
-
-    transaction_reference:
-      row.transaction_reference,
-
-    /* =====================================================
-       MEMBERSHIP
-    ===================================================== */
-
-    membership:
-      category === "membership"
-        ? {
-            plan_name:
-              row.plan_name,
-
-            months_paid:
-              row.months_paid,
-
-            coverage_label:
-              coverageDisplay(
-                row
-              ),
-
-            coverage_months:
-              buildCoverageChips(
-                row
-              ),
-          }
-        : null,
-
-    /* =====================================================
-       DONATION
-    ===================================================== */
-
-    donation:
-      category === "donation"
-        ? {
-            donation_category:
-              row.donation_category,
-
-            donation_label:
-              donationCategoryLabel(
-                row.donation_category
-              ),
-          }
-        : null,
-
-    /* =====================================================
-       PROGRAMS
-    ===================================================== */
-
-    program:
-      ["school", "trip"].includes(
-        category
-      )
-        ? {
-            type:
-              category,
-
-            program_name:
-              row.program_name,
-
-            quantity:
-              Number(
-                row.quantity || 1
-              ),
-
-            participants:
-              safeJson(
-                row.participants_json,
-                []
-              ),
-
-            registration_id:
-              row.registration_id,
-
-            news_event_id:
-              row.news_event_id,
-          }
-        : null,
-  };
-}
-
-/* =========================================================
-   NORMALIZE INVOICE
-========================================================= */
-
-async function normalizeInvoice(
-  invoiceRow = {}
-) {
-
-  const payments =
-    await loadInvoicePayments(
-      invoiceRow.id
-    );
-
-  const receipts =
-    await loadInvoiceReceipts(
-      invoiceRow.id
-    );
-
-  const normalizedPayments =
-    payments.map(
-      normalizeInvoicePayment
-    );
-
-  return {
-
-    /* =====================================================
-       CORE
-    ===================================================== */
-
-    id:
-      invoiceRow.id,
-
-    invoice_number:
-      invoiceRow.invoice_number,
-
-    title:
-      invoiceRow.title,
-
-    category:
-      invoiceRow.category,
-
-    category_label:
-      paymentCategoryLabel(
-        invoiceRow.category
-      ),
-
-    status:
-      invoiceRow.status,
-
-    invoice_status:
-      invoiceRow.status,
-
-    /* =====================================================
-       PERSON
-    ===================================================== */
-
-    member_id:
-      invoiceRow.member_id,
-
-    member_no:
-      invoiceRow.member_no,
-
-    full_name:
-      invoiceRow.full_name_snapshot,
-
-    email:
-      invoiceRow.email_snapshot,
-
-    phone:
-      invoiceRow.phone_snapshot,
-
-    /* =====================================================
-       AMOUNTS
-    ===================================================== */
-
-    subtotal:
-      money(
-        invoiceRow.subtotal
-      ),
-
-    tax_amount:
-      money(
-        invoiceRow.tax_amount
-      ),
-
-    discount_amount:
-      money(
-        invoiceRow.discount_amount
-      ),
-
-    total_amount:
-      money(
-        invoiceRow.total_amount
-      ),
-
-    paid_amount:
-      money(
-        invoiceRow.paid_amount
-      ),
-
-    balance_due:
-      money(
-        invoiceRow.balance_due
-      ),
-
-    currency:
-      invoiceRow.currency ||
-      "USD",
-
-    /* =====================================================
-       PAYMENTS
-    ===================================================== */
-
-    payments:
-      normalizedPayments,
-
-    payment_count:
-      normalizedPayments.length,
-
-    /* =====================================================
-       RECEIPTS
-    ===================================================== */
-
-    receipts:
-      receipts.map((r) => ({
-        id: r.id,
-
-        receipt_number:
-          r.receipt_number,
-
-        amount:
-          money(r.amount),
-
-        status:
-          r.payment_status,
-
-        created_at:
-          r.created_at,
-      })),
-
-    receipt_count:
-      receipts.length,
-
-    /* =====================================================
-       DATES
-    ===================================================== */
-
-    invoice_date:
-      invoiceRow.invoice_date,
-
-    due_date:
-      invoiceRow.due_date,
-
-    paid_at:
-      invoiceRow.paid_at,
-
-    created_at:
-      invoiceRow.created_at,
-
-    updated_at:
-      invoiceRow.updated_at,
-  };
-}
-
-/* =========================================================
-   GET BY ID
-========================================================= */
-
-async function getInvoiceById(id) {
-
-  const row =
-    await loadInvoiceById(id);
-
-  if (!row) {
-    return null;
+    if (id) ids.push(id);
   }
 
-  return normalizeInvoice(
-    row
+  return ids;
+}
+
+/* =========================================================
+   GET ITEMS
+========================================================= */
+
+async function getInvoiceItems(invoiceId) {
+  const [rows] = await db.query(
+    `
+    SELECT *
+    FROM tbl_finance_invoice_items
+    WHERE invoice_id = ?
+    ORDER BY id ASC
+    `,
+    [invoiceId]
   );
+
+  return rows;
 }
 
 /* =========================================================
-   GET BY NUMBER
+   BUILD MEMBERSHIP ITEMS
 ========================================================= */
 
-async function getInvoiceByNumber(
-  invoiceNumber
-) {
+function buildMembershipInvoiceItems(payload = {}) {
+  const items = [];
 
-  const row =
-    await loadInvoiceByNumber(
-      invoiceNumber
-    );
+  const coverageMonths = Array.isArray(payload.coverage_months)
+    ? payload.coverage_months
+    : parseJson(payload.coverage_months_json, []);
 
-  if (!row) {
-    return null;
-  }
+  const coverageLabel =
+    payload.coverage_label ||
+    (coverageMonths.length
+      ? coverageMonths
+          .map((m) => m.label || `${m.month_name || m.month} ${m.year}`)
+          .join(", ")
+      : "");
 
-  return normalizeInvoice(
-    row
+  const registrationFee = money(payload.registration_fee || 0);
+  const membershipAmount = money(
+    payload.membership_amount ||
+      payload.base_amount ||
+      payload.amount ||
+      0
   );
+  const processingFee = money(payload.processing_fee || 0);
+
+  if (registrationFee > 0) {
+    items.push({
+      code: "REG",
+      item_type: "registration_fee",
+      item_name: "First-Time Registration Fee",
+      description: "New member registration fee",
+      quantity: 1,
+      unit_price: registrationFee,
+      total_price: registrationFee,
+      metadata: {
+        reminder_eligible: false,
+      },
+    });
+  }
+
+  if (membershipAmount > 0) {
+    items.push({
+      code: "MEM",
+      item_type: "membership_dues",
+      item_name: payload.plan_name || "Membership Dues",
+      description: coverageLabel
+        ? `Membership coverage: ${coverageLabel}`
+        : "Membership dues",
+      quantity: 1,
+      unit_price: membershipAmount,
+      total_price: membershipAmount,
+      coverage_label: coverageLabel,
+      coverage_months,
+      coverage_months_json: payload.coverage_months_json || null,
+      metadata: {
+        reminder_eligible: true,
+        reminder_type: "membership_dues",
+      },
+    });
+  }
+
+  if (processingFee > 0) {
+    items.push({
+      code: "FEE",
+      item_type: "processing_fee",
+      item_name: "Processing Fee",
+      description: "Payment processing fee",
+      quantity: 1,
+      unit_price: processingFee,
+      total_price: processingFee,
+      metadata: {
+        reminder_eligible: false,
+      },
+    });
+  }
+
+  if (!items.length) {
+    const amount = money(payload.amount || 0);
+
+    items.push({
+      code: "MEM",
+      item_type: "membership",
+      item_name: payload.plan_name || "Membership Payment",
+      description: coverageLabel || "Membership payment",
+      quantity: 1,
+      unit_price: amount,
+      total_price: amount,
+      metadata: {
+        reminder_eligible: true,
+        reminder_type: "membership_dues",
+      },
+    });
+  }
+
+  return items;
 }
 
 /* =========================================================
-   LIST
+   BUILD DONATION ITEM
 ========================================================= */
 
-async function listInvoices({
-  member_id = null,
-  category = null,
-  status = null,
-  search = "",
-} = {}) {
+function buildDonationInvoiceItems(payload = {}) {
+  const amount = money(payload.amount || payload.total_amount || 0);
 
-  const where = [];
-  const params = [];
+  return [
+    {
+      code: "DON",
+      item_type: "donation",
+      item_name:
+        payload.donation_category_label ||
+        payload.donation_category ||
+        "Donation",
+      description:
+        payload.description ||
+        payload.notes ||
+        "Church donation",
+      quantity: 1,
+      unit_price: amount,
+      total_price: amount,
+      donation_category: payload.donation_category || null,
+      metadata: {
+        reminder_eligible: Boolean(payload.promise_to_give || payload.promise_to_donate),
+        reminder_type: "donation_promise",
+        payment_link: payload.payment_link || null,
+      },
+    },
+  ];
+}
 
-  if (member_id) {
-    where.push(
-      "member_id = ?"
-    );
+/* =========================================================
+   BUILD PROGRAM ITEM
+========================================================= */
 
-    params.push(member_id);
-  }
+function buildProgramInvoiceItems(payload = {}) {
+  const quantity = Number(payload.quantity || 1) || 1;
+  const amount = money(
+    payload.unit_price ||
+      payload.price_per_person ||
+      payload.amount ||
+      payload.total_amount ||
+      0
+  );
 
-  if (category) {
-    where.push(
-      "category = ?"
-    );
+  const unitPrice =
+    quantity > 1 && amount === money(payload.total_amount || payload.amount)
+      ? money(amount / quantity)
+      : amount;
 
-    params.push(category);
-  }
+  return [
+    {
+      code: payload.category === "trip" ? "TRIP" : "SCH",
+      item_type: payload.category || "program",
+      item_name:
+        payload.program_title ||
+        payload.program_name ||
+        "Program Registration",
+      description:
+        payload.description ||
+        payload.event_date ||
+        "Program registration",
+      quantity,
+      unit_price: unitPrice,
+      total_price: money(unitPrice * quantity),
+      program_name: payload.program_name || payload.program_title || null,
+      registration_id: payload.registration_id || null,
+      metadata: {
+        participants: payload.participants || parseJson(payload.participants_json, []),
+        reminder_eligible: true,
+        reminder_type: `${payload.category || "program"}_payment`,
+        payment_link: payload.payment_link || null,
+      },
+    },
+  ];
+}
 
-  if (status) {
-    where.push(
-      "status = ?"
-    );
+/* =========================================================
+   BUILD PLEDGE ITEM
+========================================================= */
 
-    params.push(status);
-  }
+function buildPledgeInvoiceItems(payload = {}) {
+  const amount = money(payload.amount || payload.total_amount || payload.pledged_amount || 0);
 
-  if (search) {
+  return [
+    {
+      code: "PLG",
+      item_type: "pledge",
+      item_name:
+        payload.campaign_name ||
+        payload.pledge_campaign ||
+        "Pledge Payment",
+      description:
+        payload.description ||
+        payload.coverage_label ||
+        "Pledge promise/payment",
+      quantity: 1,
+      unit_price: amount,
+      total_price: amount,
+      pledge_id: payload.pledge_id || null,
+      campaign_id: payload.campaign_id || null,
+      metadata: {
+        reminder_eligible: true,
+        reminder_type: "pledge",
+        payment_link: payload.payment_link || null,
+        invoice_link: payload.invoice_link || null,
+      },
+    },
+  ];
+}
 
-    where.push(`
-      (
-        invoice_number LIKE ?
-        OR full_name_snapshot LIKE ?
-        OR email_snapshot LIKE ?
-      )
-    `);
+/* =========================================================
+   BUILD REMINDER INVOICE ITEMS
+   For dues reminders, pledge reminders, promised donations.
+========================================================= */
 
-    const s =
-      `%${search}%`;
+function buildReminderInvoiceItems(payload = {}) {
+  const reminderType = clean(payload.reminder_type || payload.type || "payment_reminder", 80);
+  const amount = money(payload.amount || payload.balance_due || payload.remaining_amount || 0);
 
-    params.push(
-      s,
-      s,
-      s
-    );
-  }
-
-  const [rows] =
-    await db.query(
-      `
-      SELECT *
-
-      FROM tbl_finance_invoices
-
-      ${
-        where.length
-          ? `WHERE ${where.join(" AND ")}`
-          : ""
-      }
-
-      ORDER BY id DESC
-      `,
-      params
-    );
-
-  const result = [];
-
-  for (const row of rows) {
-    result.push(
-      await normalizeInvoice(
-        row
-      )
-    );
-  }
-
-  return result;
+  return [
+    {
+      code:
+        reminderType === "pledge"
+          ? "PLG"
+          : reminderType === "membership_dues"
+            ? "DUE"
+            : "REM",
+      item_type: reminderType,
+      item_name:
+        payload.item_name ||
+        payload.plan_name ||
+        payload.campaign_name ||
+        "Payment Reminder",
+      description:
+        payload.description ||
+        payload.coverage_label ||
+        "Outstanding balance reminder",
+      quantity: 1,
+      unit_price: amount,
+      total_price: amount,
+      coverage_label: payload.coverage_label || null,
+      pledge_id: payload.pledge_id || null,
+      campaign_id: payload.campaign_id || null,
+      metadata: {
+        reminder_eligible: true,
+        reminder_type: reminderType,
+        payment_link: payload.payment_link || null,
+        invoice_link: payload.invoice_link || null,
+        donor_type: payload.member_id ? "member" : "guest",
+      },
+    },
+  ];
 }
 
 /* =========================================================
@@ -580,10 +437,16 @@ async function listInvoices({
 ========================================================= */
 
 module.exports = {
-  getInvoiceById,
-  getInvoiceByNumber,
-  listInvoices,
+  createInvoiceItem,
+  createInvoiceItems,
 
-  normalizeInvoice,
-  normalizeInvoicePayment,
+  getInvoiceItems,
+
+  buildMembershipInvoiceItems,
+  buildDonationInvoiceItems,
+  buildProgramInvoiceItems,
+  buildPledgeInvoiceItems,
+  buildReminderInvoiceItems,
+
+  normalizeItem,
 };

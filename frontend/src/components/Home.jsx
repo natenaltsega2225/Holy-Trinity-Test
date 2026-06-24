@@ -1,7 +1,5 @@
-// // src/components/Home.jsx
 
-
-
+//  // src/components/Home.jsx
 // import React, { useEffect } from "react";
 // import { useLocation, Link } from "react-router-dom";
 // import { usePublicSettings } from "../context/PublicSettingsContext";
@@ -17,7 +15,7 @@
 // import "../styles/Home.css";
 
 // const DonateStrip = () => (
-//   <section id="donate-section" className="ht-donate-strip"></section>
+//   <section id="donate-section" className="ht-donate-strip" />
 // );
 
 // const Home = () => {
@@ -70,8 +68,8 @@
 //               Learn More
 //             </Link>
 
-//             <Link className="ht-btn ht-btn-donate" to="/donate">
-//             Donate
+//             <Link className="ht-btn ht-btn-dark" to="/donate">
+//               Donate
 //             </Link>
 //           </div>
 //         </div>
@@ -94,8 +92,6 @@
 
 // export default Home;
 
-
- // src/components/Home.jsx
 import React, { useEffect } from "react";
 import { useLocation, Link } from "react-router-dom";
 import { usePublicSettings } from "../context/PublicSettingsContext";
@@ -114,6 +110,31 @@ const DonateStrip = () => (
   <section id="donate-section" className="ht-donate-strip" />
 );
 
+function scrollToSectionWithRetry(sectionId, attempt = 0) {
+  const el = document.getElementById(sectionId);
+
+  if (el) {
+    const headerOffset = 90;
+    const top =
+      el.getBoundingClientRect().top +
+      window.scrollY -
+      headerOffset;
+
+    window.scrollTo({
+      top,
+      behavior: "smooth",
+    });
+
+    return;
+  }
+
+  if (attempt < 20) {
+    window.setTimeout(() => {
+      scrollToSectionWithRetry(sectionId, attempt + 1);
+    }, 75);
+  }
+}
+
 const Home = () => {
   const location = useLocation();
   const { settings: publicSettings } = usePublicSettings();
@@ -127,25 +148,17 @@ const Home = () => {
 
   useEffect(() => {
     const targetId = location.state?.scrollTo;
+
     if (!targetId) return;
 
-    const el = document.getElementById(targetId);
-    if (!el) return;
-
-    const headerOffset = 90;
-    const elementPosition = el.getBoundingClientRect().top + window.scrollY;
-    const offsetPosition = elementPosition - headerOffset;
-
-    window.scrollTo({
-      top: offsetPosition,
-      behavior: "smooth",
-    });
-  }, [location]);
+    scrollToSectionWithRetry(targetId);
+  }, [location.key, location.state]);
 
   return (
     <>
       <section id="home" className="ht-hero">
         <div className="ht-hero-overlay" />
+
         <div className="ht-container ht-hero-inner">
           <h1 className="ht-hero-title">{churchName}</h1>
           <h2 className="ht-hero-subtitle">Orthodox Tewahedo Church</h2>
@@ -169,6 +182,7 @@ const Home = () => {
             </Link>
           </div>
         </div>
+
         <div className="ht-hero-fade" />
       </section>
 
